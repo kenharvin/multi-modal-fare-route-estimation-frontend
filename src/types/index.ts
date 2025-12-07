@@ -1,0 +1,143 @@
+// Coordinates for map locations
+export interface Coordinates {
+  latitude: number;
+  longitude: number;
+}
+
+// Location with name and coordinates
+export interface Location {
+  name: string;
+  coordinates: Coordinates;
+  address?: string;
+}
+
+// Travel modes
+export enum TravelMode {
+  PUBLIC_TRANSPORT = 'public_transport',
+  PRIVATE_VEHICLE = 'private_vehicle'
+}
+
+// Transport types for public transport
+export enum TransportType {
+  JEEPNEY = 'jeepney',
+  BUS = 'bus',
+  UV_EXPRESS = 'uv_express',
+  TRAIN = 'train'
+}
+
+// User preferences for public transport
+export enum PublicTransportPreference {
+  LOWEST_FARE = 'lowest_fare',
+  SHORTEST_TIME = 'shortest_time',
+  FEWEST_TRANSFERS = 'fewest_transfers'
+}
+
+// Route segment for public transport
+export interface RouteSegment {
+  id: string;
+  transportType: TransportType;
+  routeName: string;
+  origin: Location;
+  destination: Location;
+  fare: number;
+  estimatedTime: number; // in minutes
+  distance: number; // in kilometers
+}
+
+// Complete route with multiple segments
+export interface Route {
+  id: string;
+  segments: RouteSegment[];
+  totalFare: number;
+  totalTime: number;
+  totalDistance: number;
+  totalTransfers: number;
+  fuzzyScore?: number;
+}
+
+// Trip plan with multiple destinations
+export interface TripPlan {
+  id: string;
+  routes: Route[];
+  totalFare: number;
+  totalTime: number;
+  totalDistance: number;
+  destinations: Location[];
+}
+
+// Fuzzy logic parameters
+export interface FuzzyScore {
+  fareScore: number;
+  timeScore: number;
+  transferScore: number;
+  totalScore: number;
+}
+
+// Vehicle information for private transport
+export interface Vehicle {
+  id?: string;
+  make?: string;
+  model?: string;
+  category?: VehicleCategory;
+  fuelEfficiency: number; // km per liter
+}
+
+export enum VehicleCategory {
+  SEDAN = 'sedan',
+  SUV = 'suv',
+  HATCHBACK = 'hatchback',
+  MOTORCYCLE = 'motorcycle',
+  VAN = 'van'
+}
+
+// Stopover for private vehicle trips
+export interface Stopover {
+  id: string;
+  location: Location;
+  type: StopoverType;
+  estimatedDuration?: number; // in minutes
+}
+
+export enum StopoverType {
+  GAS = 'gas',
+  FOOD = 'food',
+  REST = 'rest',
+  OTHER = 'other'
+}
+
+// Private vehicle route
+export interface PrivateVehicleRoute {
+  id: string;
+  origin: Location;
+  destination: Location;
+  stopovers: Stopover[];
+  totalDistance: number; // in kilometers
+  fuelConsumption: number; // in liters
+  fuelCost: number;
+  estimatedTime: number; // in minutes
+  avoidTolls: boolean;
+  fuzzyScore?: number;
+}
+
+// Driving preferences
+export interface DrivingPreferences {
+  avoidTolls: boolean;
+  avoidHighways: boolean;
+  preferShortest: boolean;
+}
+
+// API Response types
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+}
+
+// Greedy algorithm constraints
+export interface GreedyConstraints {
+  maxBudget?: number;
+  maxDistance?: number;
+  maxTime?: number;
+  maxTransfers?: number;
+}
