@@ -6,6 +6,7 @@ import { RootStackParamList } from '@navigation/types';
 import { Route } from '@/types';
 import { useApp } from '@context/AppContext';
 import RouteCard from '@components/RouteCard';
+import MapViewComponent from '@components/MapViewComponent';
 import { Button, ActivityIndicator } from 'react-native-paper';
 import { fetchRoutes } from '@services/api';
 type RouteResultsRouteProp = RouteProp<RootStackParamList, 'RouteResults'>;
@@ -62,18 +63,25 @@ const RouteResultsScreen: React.FC = () => {
   if (routes.length === 0) {
     return (
       <View style={styles.emptyContainer}>
-        <Text>MAP</Text>
-        <Text style={styles.emptyTitle}>No Routes Found</Text>
-        <Text style={styles.emptyText}>
-          We couldn't find any routes for your selected locations.
-        </Text>
-        <Button
-          mode="contained"
-          onPress={() => navigation.goBack()}
-          style={styles.retryButton}
-        >
-          Try Again
-        </Button>
+        <View style={styles.mapContainer}>
+          <MapViewComponent 
+            origin={origin}
+            destination={destination}
+          />
+        </View>
+        <View style={styles.emptyContent}>
+          <Text style={styles.emptyTitle}>No Routes Found</Text>
+          <Text style={styles.emptyText}>
+            We couldn't find any routes for your selected locations.
+          </Text>
+          <Button
+            mode="contained"
+            onPress={() => navigation.goBack()}
+            style={styles.retryButton}
+          >
+            Try Again
+          </Button>
+        </View>
       </View>
     );
   }
@@ -85,6 +93,15 @@ const RouteResultsScreen: React.FC = () => {
         <Text style={styles.subtitle}>
           {origin.name} → {destination.name}
         </Text>
+      </View>
+
+      {/* Map showing the selected route */}
+      <View style={styles.mapContainer}>
+        <MapViewComponent 
+          origin={origin}
+          destination={destination}
+          route={selectedRoute}
+        />
       </View>
 
       <ScrollView style={styles.routesList}>
@@ -147,10 +164,13 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     flex: 1,
+    backgroundColor: '#f5f5f5'
+  },
+  emptyContent: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
-    backgroundColor: '#f5f5f5'
+    padding: 40
   },
   emptyTitle: {
     fontSize: 24,
@@ -183,6 +203,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#7f8c8d',
     marginTop: 4
+  },
+  mapContainer: {
+    height: 300,
+    width: '100%',
+    backgroundColor: '#e8f4f8'
   },
   routesList: {
     flex: 1,

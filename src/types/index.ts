@@ -42,6 +42,7 @@ export interface RouteSegment {
   fare: number;
   estimatedTime: number; // in minutes
   distance: number; // in kilometers
+  geometry?: Coordinates[]; // Actual path coordinates from backend
 }
 
 // Complete route with multiple segments

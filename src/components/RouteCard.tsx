@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Route, TransportType } from '@/types';
+import { getTransportStyle } from '@/utils/transportUtils';
+
 interface RouteCardProps {
   route: Route;
   isSelected: boolean;
@@ -9,36 +11,6 @@ interface RouteCardProps {
 }
 
 const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect }) => {
-  const getTransportIcon = (type: TransportType): string => {
-    switch (type) {
-      case TransportType.JEEPNEY:
-        return 'bus';
-      case TransportType.BUS:
-        return 'bus-side';
-      case TransportType.UV_EXPRESS:
-        return 'van-passenger';
-      case TransportType.TRAIN:
-        return 'train';
-      default:
-        return 'bus';
-    }
-  };
-
-  const getTransportColor = (type: TransportType): string => {
-    switch (type) {
-      case TransportType.JEEPNEY:
-        return '#e74c3c';
-      case TransportType.BUS:
-        return '#3498db';
-      case TransportType.UV_EXPRESS:
-        return '#9b59b6';
-      case TransportType.TRAIN:
-        return '#2ecc71';
-      default:
-        return '#95a5a6';
-    }
-  };
-
   const content = (
     <View style={[styles.container, isSelected && styles.containerSelected]}>
       {rank && (
@@ -55,14 +27,19 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
       )}
 
       <View style={styles.transportIcons}>
-        {route.segments.map((segment, index) => (
-          <View key={index} style={styles.iconContainer}>
-            <Text style={{fontSize: 24}}>{segment.transportType.charAt(0).toUpperCase()}</Text>
-            {index < route.segments.length - 1 && (
-              <Text>{'>'}</Text>
-            )}
-          </View>
-        ))}
+        {route.segments.map((segment, index) => {
+          const transportStyle = getTransportStyle(segment.transportType);
+          return (
+            <View key={index} style={styles.iconContainer}>
+              <View style={[styles.transportBadge, { backgroundColor: transportStyle.color }]}>
+                <Text style={styles.transportIcon}>{transportStyle.icon}</Text>
+              </View>
+              {index < route.segments.length - 1 && (
+                <Text style={styles.arrowIcon}>→</Text>
+              )}
+            </View>
+          );
+        })}
       </View>
 
       <View style={styles.infoRow}>
@@ -98,14 +75,23 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
       </View>
 
       <View style={styles.segmentsSection}>
-        {route.segments.map((segment, index) => (
-          <View key={segment.id} style={styles.segment}>
-            <Text style={{fontSize: 16}}>{segment.transportType.charAt(0).toUpperCase()}</Text>
-            <Text style={styles.segmentText}>
-              {segment.routeName} • {segment.origin.name} → {segment.destination.name}
-            </Text>
-          </View>
-        ))}
+        {route.segments.map((segment, index) => {
+          const transportStyle = getTransportStyle(segment.transportType);
+          return (
+            <View key={segment.id} style={styles.segment}>
+              <View style={[styles.segmentColorBar, { backgroundColor: transportStyle.color }]} />
+              <View style={[styles.segmentBadge, { backgroundColor: transportStyle.color }]}>
+                <Text style={styles.segmentIcon}>{transportStyle.icon}</Text>
+              </View>
+              <View style={styles.segmentContent}>
+                <Text style={styles.segmentTitle}>{segment.routeName}</Text>
+                <Text style={styles.segmentText}>
+                  {segment.origin.name} → {segment.destination.name}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
       </View>
     </View>
   );
@@ -175,11 +161,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
-    marginTop: 24
+    marginTop: 24,
+    flexWrap: 'wrap'
   },
   iconContainer: {
     flexDirection: 'row',
-    alignItems: 'center'
+    alignItems: 'center',
+    marginHorizontal: 4
+  },
+  transportBadge: {
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 50
+  },
+  transportIcon: {
+    fontSize: 24
+  },
+  arrowIcon: {
+    fontSize: 20,
+    color: '#95a5a6',
+    marginHorizontal: 4
   },
   infoRow: {
     flexDirection: 'row',
@@ -214,13 +218,43 @@ const styles = StyleSheet.create({
   segment: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8
+    marginBottom: 12,
+    position: 'relative',
+    paddingLeft: 8
+  },
+  segmentColorBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    borderRadius: 2
+  },
+  segmentBadge: {
+    borderRadius: 16,
+    padding: 6,
+    marginRight: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 32,
+    minHeight: 32
+  },
+  segmentIcon: {
+    fontSize: 18
+  },
+  segmentContent: {
+    flex: 1
+  },
+  segmentTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 2
   },
   segmentText: {
-    fontSize: 12,
-    color: '#34495e',
-    marginLeft: 8,
-    flex: 1
+    fontSize: 11,
+    color: '#7f8c8d',
+    flexShrink: 1
   }
 });
 

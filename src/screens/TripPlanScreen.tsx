@@ -9,6 +9,7 @@ import { useApp } from '@context/AppContext';
 import DestinationInput from '@components/DestinationInput';
 import TripSummary from '@components/TripSummary';
 import RouteCard from '@components/RouteCard';
+import MapViewComponent from '@components/MapViewComponent';
 import { Button, ActivityIndicator } from 'react-native-paper';
 import { fetchRoutes } from '@services/api';
 type TripPlanRouteProp = RouteProp<RootStackParamList, 'TripPlan'>;
@@ -114,6 +115,15 @@ const TripPlanScreen: React.FC = () => {
       <View style={styles.header}>
         <Text style={styles.title}>Trip Plan</Text>
         <Text style={styles.subtitle}>Multi-destination journey</Text>
+      </View>
+
+      {/* Map showing all route legs */}
+      <View style={styles.mapContainer}>
+        <MapViewComponent 
+          origin={tripPlan.destinations[0]}
+          destination={tripPlan.destinations[tripPlan.destinations.length - 1]}
+          route={tripPlan.routes.length > 0 ? tripPlan.routes[0] : undefined}
+        />
       </View>
 
       <View style={styles.section}>
@@ -248,6 +258,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#7f8c8d',
     marginTop: 4
+  },
+  mapContainer: {
+    height: 250,
+    width: '100%',
+    backgroundColor: '#e8f4f8',
+    marginTop: 10
   },
   section: {
     backgroundColor: '#fff',

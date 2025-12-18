@@ -1,5 +1,6 @@
 node_modules/
 .expo/
+.expo-shared/
 dist/
 npm-debug.*
 *.jks
@@ -10,6 +11,15 @@ npm-debug.*
 *.orig.*
 web-build/
 
+# Optional caches
+.cache/
+.turbo/
+.parcel-cache/
+
+# Native projects (if prebuilt/ejected locally)
+android/
+ios/
+
 # macOS
 .DS_Store
 
@@ -17,6 +27,12 @@ web-build/
 .env
 .env.local
 .env.*.local
+
+# Local certificates
+certs/
+*.pem
+*.crt
+*.csr
 
 # Testing
 coverage/
