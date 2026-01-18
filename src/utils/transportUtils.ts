@@ -8,6 +8,12 @@ export interface TransportStyle {
 
 export const getTransportStyle = (type: TransportType): TransportStyle => {
   switch (type) {
+    case TransportType.WALK:
+      return {
+        color: '#7f8c8d', // Gray
+        icon: '🚶',
+        label: 'Walk'
+      };
     case TransportType.JEEPNEY:
       return {
         color: '#e74c3c', // Red

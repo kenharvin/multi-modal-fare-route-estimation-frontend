@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -8,27 +8,41 @@ import { useApp } from '@context/AppContext';
 import RouteCard from '@components/RouteCard';
 import MapViewComponent from '@components/MapViewComponent';
 import { Button, ActivityIndicator } from 'react-native-paper';
-import { fetchRoutes } from '@services/api';
+import { fetchRoutes, pingBackend } from '@services/api';
 type RouteResultsRouteProp = RouteProp<RootStackParamList, 'RouteResults'>;
 type RouteResultsNavigationProp = StackNavigationProp<RootStackParamList, 'RouteResults'>;
 
 const RouteResultsScreen: React.FC = () => {
   const navigation = useNavigation<RouteResultsNavigationProp>();
   const route = useRoute<RouteResultsRouteProp>();
-  const { origin, destination, preference } = route.params;
+  const { origin, destination, preference, budget, maxTransfers, preferredModes } = route.params;
   const { isLoading, setIsLoading, setError } = useApp();
   
   const [routes, setRoutes] = useState<Route[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
+  const hasFetchedRef = useRef<boolean>(false);
 
   useEffect(() => {
+    // Guard against duplicate fetches caused by re-mounts or fast refresh
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
     loadRoutes();
   }, []);
 
   const loadRoutes = async () => {
     try {
       setIsLoading(true);
-      const data = await fetchRoutes(origin, destination, preference);
+      // Quick reachability check to avoid confusing network errors
+      const ok = await pingBackend();
+      if (!ok) {
+        setError('Backend unreachable. Check IP, firewall, and Wi‑Fi.');
+        return;
+      }
+      const data = await fetchRoutes(origin, destination, preference, {
+        budget,
+        maxTransfers,
+        preferredModes
+      });
       setRoutes(data);
       if (data.length > 0) {
         setSelectedRoute(data[0]); // Select best route by default
@@ -129,7 +143,11 @@ const RouteResultsScreen: React.FC = () => {
             </View>
             <View style={styles.summaryItem}>
               <Text>↔</Text>
-              <Text style={styles.summaryValue}>{selectedRoute.totalTransfers} transfers</Text>
+              <Text style={styles.summaryValue}>
+                {selectedRoute.totalTransfers === 0
+                  ? 'No transfers'
+                  : `${selectedRoute.totalTransfers} transfer${selectedRoute.totalTransfers === 1 ? '' : 's'}`}
+              </Text>
             </View>
           </View>
           <Button

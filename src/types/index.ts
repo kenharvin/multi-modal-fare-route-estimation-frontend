@@ -22,7 +22,8 @@ export enum TransportType {
   JEEPNEY = 'jeepney',
   BUS = 'bus',
   UV_EXPRESS = 'uv_express',
-  TRAIN = 'train'
+  TRAIN = 'train',
+  WALK = 'walk'
 }
 
 // User preferences for public transport

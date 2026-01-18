@@ -1,4 +1,7 @@
 import axios from 'axios';
+import { Platform } from 'react-native';
+// @ts-ignore: expo-constants available in Expo env
+import Constants from 'expo-constants';
 import {
   Location,
   PublicTransportPreference,
@@ -7,12 +10,36 @@ import {
   DrivingPreferences,
   Stopover,
   PrivateVehicleRoute,
-  ApiResponse
+  ApiResponse,
+  TransportType
 } from '@/types';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+const resolveApiBaseUrl = (): string => {
+  let base = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+  // If running on device/emulator and base points to localhost, try to infer LAN IP
+  if (Platform.OS !== 'web' && /localhost|127\.0\.0\.1/i.test(base)) {
+    try {
+      // hostUri looks like 192.168.x.x:19000
+      const hostUri: string | undefined = (Constants?.expoConfig as any)?.hostUri || (Constants as any)?.manifest2?.extra?.expoGo?.developer?.host;
+      if (hostUri && hostUri.includes(':')) {
+        const host = hostUri.split(':')[0];
+        if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+          base = `http://${host}:8000`;
+        }
+      }
+    } catch {}
+    // Android emulator special-case
+    if (Platform.OS === 'android' && /localhost|127\.0\.0\.1/i.test(base)) {
+      base = 'http://10.0.2.2:8000';
+    }
+  }
+  return base;
+};
+
+const API_BASE_URL = resolveApiBaseUrl();
 const ROUTE_TIMEOUT_MS = Number(process.env.EXPO_PUBLIC_ROUTE_TIMEOUT_MS || 180000); // 3 minutes default
-const USE_MOCK_ROUTES = String(process.env.EXPO_PUBLIC_USE_MOCK_ROUTES || 'false') === 'true';
+const COMPACT_ROUTES = String(process.env.EXPO_PUBLIC_COMPACT_ROUTES || '0').trim() === '1';
+const ESTIMATED_BUDGET = Number(process.env.EXPO_PUBLIC_ESTIMATED_BUDGET || 1000); // higher default to avoid over-filtering long trips
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -21,6 +48,36 @@ const apiClient = axios.create({
     'Content-Type': 'application/json'
   }
 });
+/**
+ * Simple backend health check to detect network reachability
+ */
+export const pingBackend = async (): Promise<boolean> => {
+  try {
+    const res = await apiClient.get('/system/health');
+    return !!res.data;
+  } catch (e) {
+    return false;
+  }
+};
+
+/**
+ * Get an OSM-following preview polyline between two points
+ * Returns Coordinates[] converted from GeoJSON [lon,lat]
+ */
+export const getPreviewPolyline = async (
+  origin: { latitude: number; longitude: number },
+  destination: { latitude: number; longitude: number }
+): Promise<{ coords: { latitude: number; longitude: number }[]; source: string; distance_m?: number; }> => {
+  const res = await apiClient.post('/system/osm-route', {
+    origin: { lat: origin.latitude, lon: origin.longitude },
+    destination: { lat: destination.latitude, lon: destination.longitude }
+  });
+  const data = res.data;
+  const coords = Array.isArray(data?.coordinates)
+    ? data.coordinates.map((c: number[]) => ({ latitude: c[1], longitude: c[0] }))
+    : [];
+  return { coords, source: data?.source || 'direct', distance_m: data?.distance_m };
+};
 
 // Add request interceptor for logging
 apiClient.interceptors.request.use(
@@ -61,7 +118,8 @@ apiClient.interceptors.response.use(
 export const fetchRoutes = async (
   origin: Location,
   destination: Location,
-  preference: PublicTransportPreference
+  preference: PublicTransportPreference,
+  options?: { budget?: number; maxTransfers?: number; preferredModes?: string[] }
 ): Promise<Route[]> => {
   const maxAttempts = 2; // initial try + 1 retry on transient errors
   let lastError: any = null;
@@ -79,7 +137,7 @@ export const fetchRoutes = async (
     console.log('[API] Origin:', origin);
     console.log('[API] Destination:', destination);
 
-    const response = await apiClient.post('/public-transport/plan', {
+    const response = await apiClient.post(`/public-transport/plan?compact=${COMPACT_ROUTES ? 1 : 0}`, {
       origin: {
         lat: origin.coordinates.latitude,
         lon: origin.coordinates.longitude,
@@ -92,23 +150,46 @@ export const fetchRoutes = async (
       },
       preferences: {
         preference_type: preferenceMap[preference] || 'balanced',
-        estimated_budget: 200.0,
-        preferred_modes: ['walk', 'jeepney', 'bus', 'lrt', 'mrt', 'pnr']
+        estimated_budget: options?.budget ?? ESTIMATED_BUDGET,
+        preferred_modes: options?.preferredModes ?? ['walk', 'jeepney', 'bus', 'lrt', 'mrt', 'pnr'],
+        max_transfers: options?.maxTransfers
       }
     }, { timeout: ROUTE_TIMEOUT_MS });
 
     console.log('[API] Backend response:', response.data);
 
     // Convert backend response to frontend Route format
-    if (response.data && response.data.route) {
-      const convertedRoute = convertBackendRouteToFrontend(response.data);
-      console.log('[API] Converted route:', convertedRoute);
-      console.log('[API] Geometry check:', convertedRoute.segments.map(s => ({
-        id: s.id,
-        hasGeometry: !!s.geometry,
-        geometryLength: s.geometry?.length || 0
-      })));
-      return [convertedRoute];
+    if (response.data) {
+      // Prefer `route`, but also handle `recommended_route` (backend compatibility)
+      const routePayload = response.data.route || response.data.recommended_route;
+      if (routePayload) {
+        const convertedRoute = convertBackendRouteToFrontend({
+          ...response.data,
+          route: routePayload
+        });
+        console.log('[API] Converted route:', convertedRoute);
+        console.log('[API] Geometry check:', convertedRoute.segments.map(s => ({
+          id: s.id,
+          hasGeometry: !!s.geometry,
+          geometryLength: s.geometry?.length || 0
+        })));
+        return [convertedRoute];
+      }
+
+      // If alternatives exist but primary route field is missing, select best alternative
+      if (Array.isArray(response.data.alternatives) && response.data.alternatives.length > 0) {
+        const bestAlt = response.data.alternatives[0];
+        const convertedRoute = convertBackendRouteToFrontend({
+          ...response.data,
+          route: bestAlt.route || []
+        });
+        return [convertedRoute];
+      }
+
+      // If backend returned a meaningful message, propagate it
+      if (typeof response.data.message === 'string' && response.data.message.length > 0) {
+        throw new Error(response.data.message);
+      }
     }
 
     throw new Error('Failed to fetch routes');
@@ -120,7 +201,10 @@ export const fetchRoutes = async (
       if (isTimeout) {
         console.warn(`[API] Route request timed out after ${ROUTE_TIMEOUT_MS}ms (attempt ${attempt}/${maxAttempts}).`);
       } else {
-        console.warn(`[API] Route request failed (attempt ${attempt}/${maxAttempts}):`, error?.message || error);
+        // Prefer backend error message if available
+        const backendMsg = error?.response?.data?.message || error?.response?.data?.error;
+        const msg = backendMsg || error?.message || error;
+        console.warn(`[API] Route request failed (attempt ${attempt}/${maxAttempts}):`, msg);
       }
       // simple backoff before retrying
       if (attempt < maxAttempts && isTransient) {
@@ -133,10 +217,6 @@ export const fetchRoutes = async (
   }
 
   console.error('[API] Error fetching routes (final):', lastError);
-  if (USE_MOCK_ROUTES) {
-    console.log('[API] Falling back to mock data (EXPO_PUBLIC_USE_MOCK_ROUTES=true)');
-    return getMockRoutes(origin, destination);
-  }
   throw lastError || new Error('Failed to fetch routes');
 };
 
@@ -182,6 +262,19 @@ export const calculatePrivateVehicleRoute = async (
 const convertBackendRouteToFrontend = (backendResponse: any): Route => {
   console.log('[Converter] Processing backend response...');
   console.log('[Converter] map_geojson:', backendResponse.map_geojson);
+  // Extract debug coordinates for pinned origin/destination and chosen stops
+  const debugOriginPinned = backendResponse.debug_snapped_origin && typeof backendResponse.debug_snapped_origin.lat === 'number'
+    ? { latitude: backendResponse.debug_snapped_origin.lat, longitude: backendResponse.debug_snapped_origin.lon }
+    : undefined;
+  const debugChosenOriginStop = backendResponse.debug_chosen_origin_stop && typeof backendResponse.debug_chosen_origin_stop.lat === 'number'
+    ? { latitude: backendResponse.debug_chosen_origin_stop.lat, longitude: backendResponse.debug_chosen_origin_stop.lon }
+    : undefined;
+  const debugDestPinned = backendResponse.debug_snapped_destination && typeof backendResponse.debug_snapped_destination.lat === 'number'
+    ? { latitude: backendResponse.debug_snapped_destination.lat, longitude: backendResponse.debug_snapped_destination.lon }
+    : undefined;
+  const debugChosenDestStop = backendResponse.debug_chosen_destination_stop && typeof backendResponse.debug_chosen_destination_stop.lat === 'number'
+    ? { latitude: backendResponse.debug_chosen_destination_stop.lat, longitude: backendResponse.debug_chosen_destination_stop.lon }
+    : undefined;
   
   // Extract geometry from map_geojson if available
   const geometryMap = new Map<number, any[]>();
@@ -205,8 +298,8 @@ const convertBackendRouteToFrontend = (backendResponse: any): Route => {
     console.log(`[Converter] Leg ${index}: mode=${leg.mode}, coords=${coords.length}`);
     
     // Extract origin and destination coordinates from geometry if available
-    let originCoords = { latitude: 0, longitude: 0 };
-    let destCoords = { latitude: 0, longitude: 0 };
+    let originCoords: { latitude: number; longitude: number } | undefined;
+    let destCoords: { latitude: number; longitude: number } | undefined;
     
     if (coords.length > 0) {
       // coords are [lon, lat] in GeoJSON format
@@ -214,29 +307,48 @@ const convertBackendRouteToFrontend = (backendResponse: any): Route => {
       destCoords = { latitude: coords[coords.length - 1][1], longitude: coords[coords.length - 1][0] };
       console.log(`[Converter] Leg ${index}: origin=(${originCoords.latitude}, ${originCoords.longitude}), dest=(${destCoords.latitude}, ${destCoords.longitude})`);
     } else {
-      console.warn(`[Converter] Leg ${index}: No geometry coordinates, will use straight line`);
+      console.warn(`[Converter] Leg ${index}: No geometry coordinates, computing fallback endpoints`);
+      // Fallback endpoints for walk legs using backend debug fields
+      const isWalk = (leg.mode === 'walk');
+      const isOriginPinned = isWalk && leg.origin === 'Origin (Pinned)';
+      const isDestPinned = isWalk && leg.destination === 'Destination (Pinned)';
+      if (isOriginPinned && debugOriginPinned && debugChosenOriginStop) {
+        originCoords = debugOriginPinned;
+        destCoords = debugChosenOriginStop;
+      } else if (isDestPinned && debugChosenDestStop && debugDestPinned) {
+        originCoords = debugChosenDestStop;
+        destCoords = debugDestPinned;
+      }
     }
 
     // Convert geometry to Coordinates array (GeoJSON lon,lat -> RN lat,lon)
-    const geometry = coords.map((coord: number[]) => ({
+    let geometry = coords.map((coord: number[]) => ({
       latitude: coord[1],
       longitude: coord[0]
     }));
+    // If no coords but we have fallback endpoints, use direct line
+    if (geometry.length === 0 && originCoords && destCoords) {
+      geometry = [originCoords, destCoords];
+    }
+
+    const transportType: TransportType = (
+      leg.mode === 'walk' ? TransportType.WALK :
+      (leg.mode === 'train' || leg.mode === 'lrt' || leg.mode === 'mrt' || leg.mode === 'pnr') ? TransportType.TRAIN :
+      leg.mode === 'jeepney' ? TransportType.JEEPNEY :
+      leg.mode === 'bus' ? TransportType.BUS : TransportType.UV_EXPRESS
+    );
 
     return {
       id: `s${index + 1}`,
-      transportType: leg.mode === 'walk' ? 'walk' : 
-                    leg.mode === 'lrt' || leg.mode === 'mrt' || leg.mode === 'pnr' ? 'train' :
-                    leg.mode === 'jeepney' ? 'jeepney' :
-                    leg.mode === 'bus' ? 'bus' : 'uv_express',
+      transportType,
       routeName: leg.route_id || leg.mode || 'Transit',
       origin: {
         name: leg.origin,
-        coordinates: originCoords
+        coordinates: originCoords || (geometry[0] ? geometry[0] : { latitude: 14.5995, longitude: 120.9842 })
       },
       destination: {
         name: leg.destination,
-        coordinates: destCoords
+        coordinates: destCoords || (geometry[geometry.length - 1] ? geometry[geometry.length - 1] : { latitude: 14.5995, longitude: 120.9842 })
       },
       fare: leg.fare || 0,
       estimatedTime: leg.travel_time || 0,
@@ -321,68 +433,7 @@ export const saveTripPlan = async (tripPlan: any): Promise<boolean> => {
   }
 };
 
-// Mock data functions for development
-
-const getMockRoutes = (origin: Location, destination: Location): Route[] => {
-  return [
-    {
-      id: '1',
-      segments: [
-        {
-          id: 's1',
-          transportType: 'jeepney' as any,
-          routeName: 'Route 01',
-          origin,
-          destination,
-          fare: 13,
-          estimatedTime: 45,
-          distance: 8.5
-        }
-      ],
-      totalFare: 13,
-      totalTime: 45,
-      totalDistance: 8.5,
-      totalTransfers: 0,
-      fuzzyScore: 0.95
-    },
-    {
-      id: '2',
-      segments: [
-        {
-          id: 's2',
-          transportType: 'bus' as any,
-          routeName: 'Bus 123',
-          origin,
-          destination: {
-            name: 'Transfer Point',
-            coordinates: { latitude: 14.6, longitude: 121.0 }
-          },
-          fare: 20,
-          estimatedTime: 30,
-          distance: 12
-        },
-        {
-          id: 's3',
-          transportType: 'train' as any,
-          routeName: 'LRT Line 2',
-          origin: {
-            name: 'Transfer Point',
-            coordinates: { latitude: 14.6, longitude: 121.0 }
-          },
-          destination,
-          fare: 15,
-          estimatedTime: 20,
-          distance: 5
-        }
-      ],
-      totalFare: 35,
-      totalTime: 50,
-      totalDistance: 17,
-      totalTransfers: 1,
-      fuzzyScore: 0.88
-    }
-  ];
-};
+// Mock data functions for development (private vehicle only)
 
 const getMockPrivateVehicleRoute = (
   origin: Location,

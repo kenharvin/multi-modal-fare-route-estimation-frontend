@@ -62,7 +62,11 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
         <View style={styles.infoItem}>
           <Text>↔</Text>
           <Text style={styles.infoLabel}>Transfers</Text>
-          <Text style={styles.infoValue}>{route.totalTransfers}</Text>
+          <Text style={styles.infoValue}>
+            {route.totalTransfers === 0
+              ? 'None'
+              : `${route.totalTransfers} transfer${route.totalTransfers === 1 ? '' : 's'}`}
+          </Text>
         </View>
 
         <View style={styles.divider} />

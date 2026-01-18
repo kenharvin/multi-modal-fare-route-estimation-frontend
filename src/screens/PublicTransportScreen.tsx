@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
@@ -17,6 +17,9 @@ const PublicTransportScreen: React.FC = () => {
   const { setIsLoading } = useApp();
   const [preference, setPreference] = useState<PublicTransportPreference>(PublicTransportPreference.SHORTEST_TIME);
   const [showMap, setShowMap] = useState<boolean>(false);
+  const [budget, setBudget] = useState<string>('500');
+  const [maxTransfers, setMaxTransfers] = useState<string>('3');
+  const [preferredModes, setPreferredModes] = useState<string[]>(['walk','jeepney','bus','lrt','mrt','pnr']);
 
   const preferences = [
     { value: PublicTransportPreference.LOWEST_FARE, label: 'Lowest Fare', icon: 'cash' },
@@ -35,7 +38,10 @@ const PublicTransportScreen: React.FC = () => {
     navigation.navigate('RouteResults', {
       origin: selectedOrigin,
       destination: selectedDestination,
-      preference
+      preference,
+      budget: Number(budget) || undefined,
+      maxTransfers: Number(maxTransfers) || undefined,
+      preferredModes
     });
   };
 
@@ -109,6 +115,49 @@ const PublicTransportScreen: React.FC = () => {
             </TouchableOpacity>
           ))}
         </View>
+
+        <View style={styles.inputRow}>
+          <View style={styles.inputCol}>
+            <Text style={styles.inputLabel}>Budget (₱)</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="numeric"
+              value={budget}
+              onChangeText={setBudget}
+              placeholder="e.g. 500"
+            />
+          </View>
+          <View style={styles.inputCol}>
+            <Text style={styles.inputLabel}>Max Transfers</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="numeric"
+              value={maxTransfers}
+              onChangeText={setMaxTransfers}
+              placeholder="e.g. 3"
+            />
+          </View>
+        </View>
+
+        <Text style={[styles.inputLabel, { marginTop: 12 }]}>Preferred Modes</Text>
+        <View style={styles.modesRow}>
+          {['walk','jeepney','bus','lrt','mrt','pnr'].map((m) => {
+            const active = preferredModes.includes(m);
+            return (
+              <TouchableOpacity
+                key={m}
+                style={[styles.modeChip, active && styles.modeChipActive]}
+                onPress={() => {
+                  setPreferredModes((prev) => {
+                    return active ? prev.filter(x => x !== m) : [...prev, m];
+                  });
+                }}
+              >
+                <Text style={[styles.modeChipText, active && styles.modeChipTextActive]}>{m.toUpperCase()}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       <View style={styles.footer}>
@@ -180,6 +229,52 @@ const styles = StyleSheet.create({
   preferencesContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between'
+  },
+  inputRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12
+  },
+  inputCol: {
+    flex: 1
+  },
+  inputLabel: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    marginBottom: 6
+  },
+  input: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#ecf0f1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  modesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8
+  },
+  modeChip: {
+    borderWidth: 1,
+    borderColor: '#ecf0f1',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: '#f8f9fa'
+  },
+  modeChipActive: {
+    backgroundColor: '#e3f2fd',
+    borderColor: '#3498db'
+  },
+  modeChipText: {
+    fontSize: 12,
+    color: '#7f8c8d'
+  },
+  modeChipTextActive: {
+    color: '#3498db',
+    fontWeight: '600'
   },
   preferenceCard: {
     flex: 1,

@@ -9,6 +9,9 @@ export type RootStackParamList = {
     origin: Location;
     destination: Location;
     preference: PublicTransportPreference;
+    budget?: number;
+    maxTransfers?: number;
+    preferredModes?: string[];
   };
   TripPlan: {
     initialRoute: any; // Route type
