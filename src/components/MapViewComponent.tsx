@@ -77,6 +77,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   const [selectingDestination, setSelectingDestination] = useState<boolean>(false);
   const [previewCoords, setPreviewCoords] = useState<{ latitude: number; longitude: number }[] | null>(null);
   const [previewSource, setPreviewSource] = useState<string | null>(null);
+  const [legendVisible, setLegendVisible] = useState<boolean>(false);
 
   // Calculate bounding box for route to fit all coordinates
   useEffect(() => {
@@ -622,6 +623,20 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         )}
       </MapView>
 
+      {/* Legend toggle (hidden by default; tap to show) */}
+      {route && route.segments.length > 0 && (
+        <View style={styles.legendToggleWrap}>
+          <TouchableOpacity
+            style={styles.legendToggleButton}
+            onPress={() => setLegendVisible(v => !v)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name={legendVisible ? 'close' : 'information-circle-outline'} size={16} color="#2c3e50" />
+            <Text style={styles.legendToggleText}>{legendVisible ? 'Hide legend' : 'Show legend'}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {(onOriginSelect || onDestinationSelect) && (
         <View style={styles.controls}>
           {onOriginSelect && (
@@ -680,8 +695,8 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         </View>
       )}
 
-      {/* Show legend when displaying routes */}
-      {route && route.segments.length > 0 && (
+      {/* Show legend only when toggled */}
+      {legendVisible && route && route.segments.length > 0 && (
         <MapLegend />
       )}
     </View>
@@ -760,6 +775,40 @@ const styles = StyleSheet.create({
         boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
       },
     }),
+  },
+  legendToggleWrap: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    zIndex: 20
+  },
+  legendToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 18,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3
+      },
+      android: {
+        elevation: 4
+      },
+      web: {
+        boxShadow: '0 2px 6px rgba(0,0,0,0.25)'
+      }
+    })
+  },
+  legendToggleText: {
+    marginLeft: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2c3e50'
   },
   instructionText: {
     color: '#fff',

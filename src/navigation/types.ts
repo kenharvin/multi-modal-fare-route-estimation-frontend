@@ -1,4 +1,4 @@
-import { Location, PublicTransportPreference, Vehicle, DrivingPreferences, Stopover } from '@types/index';
+import { Location, PublicTransportPreference, Vehicle, DrivingPreferences, Stopover } from '@/types';
 
 export type RootStackParamList = {
   Welcome: undefined;

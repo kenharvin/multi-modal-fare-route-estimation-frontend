@@ -38,7 +38,8 @@ const resolveApiBaseUrl = (): string => {
 
 const API_BASE_URL = resolveApiBaseUrl();
 const ROUTE_TIMEOUT_MS = Number(process.env.EXPO_PUBLIC_ROUTE_TIMEOUT_MS || 180000); // 3 minutes default
-const COMPACT_ROUTES = String(process.env.EXPO_PUBLIC_COMPACT_ROUTES || '0').trim() === '1';
+// Default to compact route summaries for fast UX; request full geometry only when needed.
+const COMPACT_ROUTES = String(process.env.EXPO_PUBLIC_COMPACT_ROUTES || '1').trim() === '1';
 const ESTIMATED_BUDGET = Number(process.env.EXPO_PUBLIC_ESTIMATED_BUDGET || 1000); // higher default to avoid over-filtering long trips
 
 const apiClient = axios.create({
@@ -55,7 +56,7 @@ export const pingBackend = async (): Promise<boolean> => {
   try {
     const res = await apiClient.get('/system/health');
     return !!res.data;
-  } catch (e) {
+  } catch {
     return false;
   }
 };
@@ -119,7 +120,7 @@ export const fetchRoutes = async (
   origin: Location,
   destination: Location,
   preference: PublicTransportPreference,
-  options?: { budget?: number; maxTransfers?: number; preferredModes?: string[] }
+  options?: { budget?: number; maxTransfers?: number; preferredModes?: string[]; compact?: boolean }
 ): Promise<Route[]> => {
   const maxAttempts = 2; // initial try + 1 retry on transient errors
   let lastError: any = null;
@@ -137,7 +138,8 @@ export const fetchRoutes = async (
     console.log('[API] Origin:', origin);
     console.log('[API] Destination:', destination);
 
-    const response = await apiClient.post(`/public-transport/plan?compact=${COMPACT_ROUTES ? 1 : 0}`, {
+    const useCompact = typeof options?.compact === 'boolean' ? options.compact : COMPACT_ROUTES;
+    const response = await apiClient.post(`/public-transport/plan?compact=${useCompact ? 1 : 0}&gtfs_overlay=0`, {
       origin: {
         lat: origin.coordinates.latitude,
         lon: origin.coordinates.longitude,
@@ -158,32 +160,48 @@ export const fetchRoutes = async (
 
     console.log('[API] Backend response:', response.data);
 
-    // Convert backend response to frontend Route format
+    // Convert backend response to frontend Route[] format (Top 3 by fuzzy score)
     if (response.data) {
+      const base = response.data;
+      const results: Route[] = [];
+
       // Prefer `route`, but also handle `recommended_route` (backend compatibility)
-      const routePayload = response.data.route || response.data.recommended_route;
-      if (routePayload) {
-        const convertedRoute = convertBackendRouteToFrontend({
-          ...response.data,
-          route: routePayload
+      const routePayload = base.route || base.recommended_route;
+      const hasPrimaryRoute = Array.isArray(routePayload) ? routePayload.length > 0 : !!routePayload;
+      if (hasPrimaryRoute) {
+        const converted = convertBackendRouteToFrontend({
+          ...base,
+          route: routePayload,
+          rank: 1
         });
-        console.log('[API] Converted route:', convertedRoute);
-        console.log('[API] Geometry check:', convertedRoute.segments.map(s => ({
-          id: s.id,
-          hasGeometry: !!s.geometry,
-          geometryLength: s.geometry?.length || 0
-        })));
-        return [convertedRoute];
+        results.push(converted);
       }
 
-      // If alternatives exist but primary route field is missing, select best alternative
-      if (Array.isArray(response.data.alternatives) && response.data.alternatives.length > 0) {
-        const bestAlt = response.data.alternatives[0];
-        const convertedRoute = convertBackendRouteToFrontend({
-          ...response.data,
-          route: bestAlt.route || []
-        });
-        return [convertedRoute];
+      if (Array.isArray(base.alternatives) && base.alternatives.length > 0) {
+        for (const alt of base.alternatives.slice(0, 2)) {
+          const altRoute = alt?.route;
+          if (Array.isArray(altRoute) && altRoute.length === 0) {
+            continue;
+          }
+          // Alternatives are summarized objects: {rank,total_fare,total_travel_time,total_transfers,fuzzy_score,route}
+          const converted = convertBackendRouteToFrontend({
+            ...base,
+            ...alt,
+            total_fare: alt.total_fare,
+            total_travel_time: alt.total_travel_time,
+            total_transfers: alt.total_transfers,
+            fuzzy_score: alt.fuzzy_score,
+            route: alt.route || [],
+            // In compact mode, the backend intentionally returns no map_geojson.
+            map_geojson: base.map_geojson
+          });
+          results.push(converted);
+        }
+      }
+
+      if (results.length > 0) {
+        console.log('[API] Converted routes:', results.length);
+        return results;
       }
 
       // If backend returned a meaningful message, propagate it
@@ -218,6 +236,36 @@ export const fetchRoutes = async (
 
   console.error('[API] Error fetching routes (final):', lastError);
   throw lastError || new Error('Failed to fetch routes');
+};
+
+/**
+ * Fetch/compute per-segment geometry for a selected route.
+ * Uses backend /public-transport/geometry to avoid re-running route planning.
+ */
+export const fetchRouteGeometry = async (route: Route): Promise<Route> => {
+  const legs = (route.segments || []).map((s) => ({
+    origin_node: s.originNode,
+    destination_node: s.destinationNode,
+    mode: s.mode || (s.transportType as any)
+  }));
+
+  const res = await apiClient.post('/public-transport/geometry?gtfs_overlay=0', { legs });
+  const geoms: any[] = Array.isArray(res.data?.geometries) ? res.data.geometries : [];
+
+  const updatedSegments = (route.segments || []).map((seg, idx) => {
+    const lonlat = Array.isArray(geoms[idx]) ? geoms[idx] : null;
+    const geometry = Array.isArray(lonlat)
+      ? lonlat
+          .filter((p: any) => Array.isArray(p) && p.length >= 2)
+          .map((p: number[]) => ({ latitude: p[1], longitude: p[0] }))
+      : undefined;
+    return {
+      ...seg,
+      geometry: geometry && geometry.length >= 2 ? geometry : seg.geometry
+    };
+  });
+
+  return { ...route, segments: updatedSegments };
 };
 
 /**
@@ -341,7 +389,13 @@ const convertBackendRouteToFrontend = (backendResponse: any): Route => {
     return {
       id: `s${index + 1}`,
       transportType,
-      routeName: leg.route_id || leg.mode || 'Transit',
+      routeName:
+        transportType === TransportType.WALK
+          ? ((leg.details || '').trim() || 'Walk')
+          : (leg.route_id || leg.mode || 'Transit'),
+      originNode: leg.origin_node,
+      destinationNode: leg.destination_node,
+      mode: leg.mode,
       origin: {
         name: leg.origin,
         coordinates: originCoords || (geometry[0] ? geometry[0] : { latitude: 14.5995, longitude: 120.9842 })
@@ -361,13 +415,13 @@ const convertBackendRouteToFrontend = (backendResponse: any): Route => {
   console.log('[Converter] Segments with geometry:', segments.filter((s: any) => s.geometry).length);
 
   return {
-    id: Date.now().toString(),
+    id: (backendResponse?.rank ? `rank-${backendResponse.rank}` : Date.now().toString()),
     segments,
     totalFare: backendResponse.total_fare || 0,
     totalTime: backendResponse.total_travel_time || 0,
     totalDistance: segments.reduce((sum: number, seg: any) => sum + seg.distance, 0),
     totalTransfers: backendResponse.total_transfers || 0,
-    fuzzyScore: backendResponse.fuzzy_score || 0
+    fuzzyScore: typeof backendResponse.fuzzy_score === 'number' ? backendResponse.fuzzy_score : (Number(backendResponse.fuzzy_score) || 0)
   };
 };
 

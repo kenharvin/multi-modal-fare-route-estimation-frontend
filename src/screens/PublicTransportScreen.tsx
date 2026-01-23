@@ -18,7 +18,8 @@ const PublicTransportScreen: React.FC = () => {
   const [preference, setPreference] = useState<PublicTransportPreference>(PublicTransportPreference.SHORTEST_TIME);
   const [showMap, setShowMap] = useState<boolean>(false);
   const [budget, setBudget] = useState<string>('500');
-  const [maxTransfers, setMaxTransfers] = useState<string>('3');
+  // Leave empty by default so long-distance trips aren't accidentally filtered out.
+  const [maxTransfers, setMaxTransfers] = useState<string>('');
   const [preferredModes, setPreferredModes] = useState<string[]>(['walk','jeepney','bus','lrt','mrt','pnr']);
 
   const preferences = [

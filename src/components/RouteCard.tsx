@@ -11,6 +11,61 @@ interface RouteCardProps {
 }
 
 const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect }) => {
+  const formatEta = (minutesFromNow: number) => {
+    const mins = Number(minutesFromNow) || 0;
+    const arrive = new Date(Date.now() + Math.max(0, mins) * 60 * 1000);
+    const hh = arrive.getHours().toString().padStart(2, '0');
+    const mm = arrive.getMinutes().toString().padStart(2, '0');
+    return `${hh}:${mm}`;
+  };
+
+  const modeLabel = (t: TransportType) => {
+    switch (t) {
+      case TransportType.WALK:
+        return 'Walk';
+      case TransportType.TRAIN:
+        return 'Train';
+      case TransportType.BUS:
+        return 'Bus';
+      case TransportType.JEEPNEY:
+        return 'Jeepney';
+      case TransportType.UV_EXPRESS:
+        return 'UV Express';
+      default:
+        return 'Transit';
+    }
+  };
+
+  const steps = (() => {
+    const s = route.segments || [];
+    if (s.length === 0) return [] as string[];
+    const out: string[] = [];
+    let lastNonWalkKey: string | null = null;
+
+    for (let i = 0; i < s.length; i++) {
+      const seg = s[i];
+      const isWalk = seg.transportType === TransportType.WALK;
+      const label = modeLabel(seg.transportType);
+      const routeName = (seg.routeName || '').trim();
+      const key = isWalk ? null : `${seg.transportType}:${routeName}`;
+
+      if (!isWalk && lastNonWalkKey && key && key !== lastNonWalkKey) {
+        const transferAt = s[i - 1]?.destination?.name || 'transfer point';
+        out.push(`Transfer at ${transferAt}`);
+      }
+
+      if (isWalk) {
+        out.push(`Walk to ${seg.destination?.name || 'next stop'} (~${seg.estimatedTime} min)`);
+      } else {
+        const rideName = routeName ? `${label} (${routeName})` : label;
+        out.push(`Take ${rideName}: ${seg.origin?.name || 'origin'} → ${seg.destination?.name || 'destination'} (~${seg.estimatedTime} min, ₱${(seg.fare || 0).toFixed(0)})`);
+        lastNonWalkKey = key;
+      }
+    }
+
+    return out;
+  })();
+
   const content = (
     <View style={[styles.container, isSelected && styles.containerSelected]}>
       {rank && (
@@ -26,21 +81,23 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
         </View>
       )}
 
-      <View style={styles.transportIcons}>
-        {route.segments.map((segment, index) => {
-          const transportStyle = getTransportStyle(segment.transportType);
-          return (
-            <View key={index} style={styles.iconContainer}>
-              <View style={[styles.transportBadge, { backgroundColor: transportStyle.color }]}>
-                <Text style={styles.transportIcon}>{transportStyle.icon}</Text>
+      {isSelected && (
+        <View style={styles.transportIcons}>
+          {route.segments.map((segment, index) => {
+            const transportStyle = getTransportStyle(segment.transportType);
+            return (
+              <View key={index} style={styles.iconContainer}>
+                <View style={[styles.transportBadge, { backgroundColor: transportStyle.color }]}>
+                  <Text style={styles.transportIcon}>{transportStyle.icon}</Text>
+                </View>
+                {index < route.segments.length - 1 && (
+                  <Text style={styles.arrowIcon}>→</Text>
+                )}
               </View>
-              {index < route.segments.length - 1 && (
-                <Text style={styles.arrowIcon}>→</Text>
-              )}
-            </View>
-          );
-        })}
-      </View>
+            );
+          })}
+        </View>
+      )}
 
       <View style={styles.infoRow}>
         <View style={styles.infoItem}>
@@ -72,31 +129,46 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
         <View style={styles.divider} />
 
         <View style={styles.infoItem}>
-          <Text>DIST</Text>
-          <Text style={styles.infoLabel}>Distance</Text>
-          <Text style={styles.infoValue}>{route.totalDistance.toFixed(1)} km</Text>
+          <Text>ETA</Text>
+          <Text style={styles.infoLabel}>Arrive</Text>
+          <Text style={styles.infoValue}>{formatEta(route.totalTime)}</Text>
         </View>
       </View>
 
-      <View style={styles.segmentsSection}>
-        {route.segments.map((segment, index) => {
-          const transportStyle = getTransportStyle(segment.transportType);
-          return (
-            <View key={segment.id} style={styles.segment}>
-              <View style={[styles.segmentColorBar, { backgroundColor: transportStyle.color }]} />
-              <View style={[styles.segmentBadge, { backgroundColor: transportStyle.color }]}>
-                <Text style={styles.segmentIcon}>{transportStyle.icon}</Text>
+      {!isSelected && (
+        <Text style={styles.tapHintText}>Tap to show modes & steps</Text>
+      )}
+
+      {isSelected && (
+        <View style={styles.segmentsSection}>
+          <Text style={styles.stepsTitle}>How to go</Text>
+          {steps.slice(0, 6).map((t, i) => (
+            <Text key={`step-${i}`} style={styles.stepText}>
+              {i + 1}. {t}
+            </Text>
+          ))}
+
+          <View style={styles.stepsDivider} />
+
+          {route.segments.map((segment) => {
+            const transportStyle = getTransportStyle(segment.transportType);
+            return (
+              <View key={segment.id} style={styles.segment}>
+                <View style={[styles.segmentColorBar, { backgroundColor: transportStyle.color }]} />
+                <View style={[styles.segmentBadge, { backgroundColor: transportStyle.color }]}>
+                  <Text style={styles.segmentIcon}>{transportStyle.icon}</Text>
+                </View>
+                <View style={styles.segmentContent}>
+                  <Text style={styles.segmentTitle}>{segment.routeName}</Text>
+                  <Text style={styles.segmentText}>
+                    {segment.origin.name} → {segment.destination.name}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.segmentContent}>
-                <Text style={styles.segmentTitle}>{segment.routeName}</Text>
-                <Text style={styles.segmentText}>
-                  {segment.origin.name} → {segment.destination.name}
-                </Text>
-              </View>
-            </View>
-          );
-        })}
-      </View>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 
@@ -168,6 +240,13 @@ const styles = StyleSheet.create({
     marginTop: 24,
     flexWrap: 'wrap'
   },
+  tapHintText: {
+    marginTop: 10,
+    fontSize: 12,
+    color: '#7f8c8d',
+    textAlign: 'center',
+    fontWeight: '600'
+  },
   iconContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -218,6 +297,23 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#ecf0f1',
     paddingTop: 12
+  },
+  stepsTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2c3e50',
+    marginBottom: 6
+  },
+  stepText: {
+    fontSize: 11,
+    color: '#34495e',
+    marginBottom: 4
+  },
+  stepsDivider: {
+    height: 1,
+    backgroundColor: '#ecf0f1',
+    marginTop: 8,
+    marginBottom: 12
   },
   segment: {
     flexDirection: 'row',

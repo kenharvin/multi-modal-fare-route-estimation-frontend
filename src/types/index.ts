@@ -44,6 +44,10 @@ export interface RouteSegment {
   estimatedTime: number; // in minutes
   distance: number; // in kilometers
   geometry?: Coordinates[]; // Actual path coordinates from backend
+  // Backend graph node ids for on-demand geometry fetch
+  originNode?: string;
+  destinationNode?: string;
+  mode?: string;
 }
 
 // Complete route with multiple segments

@@ -8,7 +8,7 @@ import { useApp } from '@context/AppContext';
 import RouteCard from '@components/RouteCard';
 import MapViewComponent from '@components/MapViewComponent';
 import { Button, ActivityIndicator } from 'react-native-paper';
-import { fetchRoutes, pingBackend } from '@services/api';
+import { fetchRoutes, fetchRouteGeometry, pingBackend } from '@services/api';
 type RouteResultsRouteProp = RouteProp<RootStackParamList, 'RouteResults'>;
 type RouteResultsNavigationProp = StackNavigationProp<RootStackParamList, 'RouteResults'>;
 
@@ -21,6 +21,7 @@ const RouteResultsScreen: React.FC = () => {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
   const hasFetchedRef = useRef<boolean>(false);
+  const [isGeometryLoading, setIsGeometryLoading] = useState<boolean>(false);
 
   useEffect(() => {
     // Guard against duplicate fetches caused by re-mounts or fast refresh
@@ -55,8 +56,23 @@ const RouteResultsScreen: React.FC = () => {
     }
   };
 
-  const handleSelectRoute = (route: Route) => {
+  const handleSelectRoute = async (route: Route) => {
     setSelectedRoute(route);
+    // Fetch road-following polylines on demand
+    try {
+      setIsGeometryLoading(true);
+      const hasAnyGeometry = (route.segments || []).some(s => Array.isArray(s.geometry) && s.geometry.length >= 3);
+      if (!hasAnyGeometry) {
+        const updated = await fetchRouteGeometry(route);
+        setSelectedRoute(updated);
+        setRoutes(prev => prev.map(r => (r.id === route.id ? updated : r)));
+      }
+    } catch (e) {
+      console.warn('[RouteResults] Failed to fetch route geometry:', e);
+      Alert.alert('Map preview unavailable', 'Could not load the route polyline. Please try selecting the route again.');
+    } finally {
+      setIsGeometryLoading(false);
+    }
   };
 
   const handleAddDestination = () => {
@@ -102,13 +118,6 @@ const RouteResultsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Available Routes</Text>
-        <Text style={styles.subtitle}>
-          {origin.name} → {destination.name}
-        </Text>
-      </View>
-
       {/* Map showing the selected route */}
       <View style={styles.mapContainer}>
         <MapViewComponent 
@@ -116,6 +125,12 @@ const RouteResultsScreen: React.FC = () => {
           destination={destination}
           route={selectedRoute}
         />
+        {isGeometryLoading && (
+          <View style={styles.mapOverlay}>
+            <ActivityIndicator size="small" color="#3498db" />
+            <Text style={styles.mapOverlayText}>Loading route on map…</Text>
+          </View>
+        )}
       </View>
 
       <ScrollView style={styles.routesList}>
@@ -206,26 +221,26 @@ const styles = StyleSheet.create({
   retryButton: {
     borderRadius: 8
   },
-  header: {
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#ecf0f1'
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2c3e50'
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 4
-  },
   mapContainer: {
     height: 300,
     width: '100%',
     backgroundColor: '#e8f4f8'
+  },
+  mapOverlay: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  mapOverlayText: {
+    fontSize: 12,
+    color: '#2c3e50'
   },
   routesList: {
     flex: 1,
