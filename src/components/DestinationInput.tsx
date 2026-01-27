@@ -7,13 +7,15 @@ interface DestinationInputProps {
   value: Location | null;
   onValueChange: (location: Location) => void;
   placeholder?: string;
+  searchProvider?: (query: string) => Promise<Location[]>;
 }
 
 const DestinationInput: React.FC<DestinationInputProps> = ({
   label,
   value,
   onValueChange,
-  placeholder = 'Enter location'
+  placeholder = 'Enter location',
+  searchProvider
 }) => {
   const [searchText, setSearchText] = useState<string>(value?.name || '');
   const [suggestions, setSuggestions] = useState<Location[]>([]);
@@ -27,7 +29,8 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
     }
 
     try {
-      const results = await searchStops(text);
+      const fn = searchProvider || searchStops;
+      const results = await fn(text);
       setSuggestions(results);
       setShowSuggestions(true);
     } catch (error) {

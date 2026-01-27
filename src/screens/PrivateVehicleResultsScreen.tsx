@@ -84,13 +84,27 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     );
   }
 
+  const isMock = routeResult.source === 'mock';
+
   return (
     <ScrollView style={styles.container}>
+      {isMock && (
+        <View style={styles.warningCard}>
+          <Text style={styles.warningTitle}>Using fallback values</Text>
+          <Text style={styles.warningText}>
+            The app couldn't reach the private routing API, so the cost/time/distance shown here are mock values.
+          </Text>
+          {routeResult.errorMessage ? (
+            <Text style={styles.warningTextSmall}>{routeResult.errorMessage}</Text>
+          ) : null}
+        </View>
+      )}
       <View style={styles.mapSection}>
         <MapViewComponent
           origin={routeResult.origin}
           destination={routeResult.destination}
           stopovers={routeResult.stopovers}
+          polylineCoords={routeResult.geometry}
           showRoute={true}
         />
       </View>
@@ -236,6 +250,29 @@ const styles = StyleSheet.create({
   },
   mapSection: {
     height: 250
+  },
+  warningCard: {
+    backgroundColor: '#fff3cd',
+    borderColor: '#ffeeba',
+    borderWidth: 1,
+    padding: 14,
+    margin: 10,
+    borderRadius: 10
+  },
+  warningTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#856404',
+    marginBottom: 6
+  },
+  warningText: {
+    fontSize: 12,
+    color: '#856404'
+  },
+  warningTextSmall: {
+    fontSize: 11,
+    color: '#856404',
+    marginTop: 8
   },
   summaryCard: {
     backgroundColor: '#fff',

@@ -122,7 +122,11 @@ export interface PrivateVehicleRoute {
   fuelCost: number;
   estimatedTime: number; // in minutes
   avoidTolls: boolean;
+  /** Road-following polyline for map rendering (from backend geometry_coords). */
+  geometry?: Coordinates[];
   fuzzyScore?: number;
+  source?: 'backend' | 'mock';
+  errorMessage?: string;
 }
 
 // Driving preferences

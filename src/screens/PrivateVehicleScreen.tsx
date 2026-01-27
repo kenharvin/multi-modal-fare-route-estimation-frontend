@@ -10,6 +10,7 @@ import DestinationInput from '@components/DestinationInput';
 import StopoverInput from '@components/StopoverInput';
 import MapViewComponent from '@components/MapViewComponent';
 import { Button, TextInput, Switch } from 'react-native-paper';
+import { searchPois } from '@services/api';
 type PrivateVehicleNavigationProp = StackNavigationProp<RootStackParamList, 'PrivateVehicle'>;
 
 const PrivateVehicleScreen: React.FC = () => {
@@ -95,12 +96,14 @@ const PrivateVehicleScreen: React.FC = () => {
           value={selectedOrigin}
           onValueChange={setSelectedOrigin}
           placeholder="Starting point"
+          searchProvider={(q) => searchPois(q, 10)}
         />
         <DestinationInput
           label="Destination"
           value={selectedDestination}
           onValueChange={setSelectedDestination}
           placeholder="Final destination"
+          searchProvider={(q) => searchPois(q, 10)}
         />
         
         <TouchableOpacity

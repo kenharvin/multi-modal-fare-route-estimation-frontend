@@ -49,6 +49,29 @@ const apiClient = axios.create({
     'Content-Type': 'application/json'
   }
 });
+
+const formatAxiosError = (err: any): string => {
+  try {
+    const isAxios = !!err?.isAxiosError;
+    const status = err?.response?.status;
+    const detail = err?.response?.data?.detail || err?.response?.data?.error || err?.response?.data?.message;
+    const code = err?.code;
+    const msg = err?.message;
+    const url = err?.config?.url;
+    const baseURL = err?.config?.baseURL;
+
+    const parts: string[] = [];
+    if (isAxios) parts.push('AxiosError');
+    if (status) parts.push(`HTTP ${status}`);
+    if (code) parts.push(String(code));
+    if (msg) parts.push(String(msg));
+    if (detail) parts.push(`detail=${String(detail)}`);
+    if (baseURL || url) parts.push(`at ${(baseURL || API_BASE_URL) + (url || '')}`);
+    return parts.join(' | ') || String(err);
+  } catch {
+    return String(err);
+  }
+};
 /**
  * Simple backend health check to detect network reachability
  */
@@ -280,27 +303,64 @@ export const calculatePrivateVehicleRoute = async (
   preferences: DrivingPreferences
 ): Promise<PrivateVehicleRoute> => {
   try {
-    const response = await apiClient.post<ApiResponse<PrivateVehicleRoute>>(
-      '/routes/private',
-      {
-        origin,
-        destination,
-        vehicle,
-        fuelPrice,
-        stopovers,
-        preferences
+    // Backend currently returns distance/time + geometry; compute fuel metrics client-side.
+    const payload = {
+      origin: {
+        name: origin?.name,
+        lat: origin?.coordinates?.latitude,
+        lon: origin?.coordinates?.longitude
+      },
+      destination: {
+        name: destination?.name,
+        lat: destination?.coordinates?.latitude,
+        lon: destination?.coordinates?.longitude
       }
-    );
+    };
 
-    if (response.data.success && response.data.data) {
-      return response.data.data;
-    }
+    const response = await apiClient.post('/private-vehicle/route', payload);
+    const data = response.data || {};
 
-    throw new Error(response.data.error || 'Failed to calculate route');
+    const geometry = Array.isArray(data.geometry_coords)
+      ? data.geometry_coords
+          .filter((p: any) => Array.isArray(p) && p.length >= 2)
+          .map((p: number[]) => ({ latitude: p[1], longitude: p[0] }))
+          .filter((c: any) => typeof c.latitude === 'number' && typeof c.longitude === 'number' && !(c.latitude === 0 && c.longitude === 0))
+      : undefined;
+
+    const distanceKm = typeof data.distance_km === 'number' ? data.distance_km : Number(data.distance_km || 0);
+    const estimatedTimeMin = typeof data.estimated_time_min === 'number'
+      ? data.estimated_time_min
+      : Number(data.estimated_time_min || 0);
+
+    const safeEfficiency = vehicle?.fuelEfficiency && vehicle.fuelEfficiency > 0 ? vehicle.fuelEfficiency : 1;
+    const fuelConsumption = distanceKm / safeEfficiency;
+    const fuelCost = fuelConsumption * (fuelPrice || 0);
+
+    return {
+      id: String(Date.now()),
+      origin,
+      destination,
+      stopovers,
+      totalDistance: distanceKm,
+      fuelConsumption,
+      fuelCost,
+      estimatedTime: Math.round(estimatedTimeMin),
+      avoidTolls: !!preferences?.avoidTolls,
+      geometry: geometry && geometry.length >= 2 ? geometry : undefined,
+      source: 'backend'
+    };
   } catch (error) {
-    console.error('Error calculating route:', error);
-    // Return mock data for development
-    return getMockPrivateVehicleRoute(origin, destination, vehicle, fuelPrice, stopovers);
+    const message = formatAxiosError(error);
+    // Use warn/log to reduce noisy red LogBox entries while still surfacing useful info.
+    console.warn('[PrivateVehicle] Route request failed; falling back to mock:', message);
+
+    const mock = getMockPrivateVehicleRoute(origin, destination, vehicle, fuelPrice, stopovers);
+    return {
+      ...mock,
+      source: 'mock',
+      errorMessage: message,
+      geometry: undefined
+    };
   }
 };
 
@@ -467,6 +527,29 @@ export const searchStops = async (query: string): Promise<Location[]> => {
     return [];
   } catch (error) {
     console.error('Error searching stops:', error);
+    return [];
+  }
+};
+
+/**
+ * Search POIs by name (for private vehicle autocomplete)
+ */
+export const searchPois = async (query: string, limit: number = 10): Promise<Location[]> => {
+  try {
+    const response = await apiClient.get(
+      `/private-vehicle/poi/search?q=${encodeURIComponent(query)}&limit=${encodeURIComponent(String(limit))}`
+    );
+
+    const results = Array.isArray(response.data?.results) ? response.data.results : [];
+    return results
+      .filter((p: any) => p && typeof p.lat === 'number' && typeof p.lon === 'number')
+      .map((p: any) => ({
+        name: String(p.name || query),
+        coordinates: { latitude: Number(p.lat), longitude: Number(p.lon) },
+        address: p.category ? String(p.category) : undefined
+      }));
+  } catch (error) {
+    console.error('Error searching POIs:', error);
     return [];
   }
 };

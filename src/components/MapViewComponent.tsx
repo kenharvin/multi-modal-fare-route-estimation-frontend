@@ -46,6 +46,13 @@ interface MapViewComponentProps {
   destination?: Location | null;
   stopovers?: Stopover[];
   route?: Route | null;
+  /**
+   * Optional polyline (e.g. private vehicle geometry) to render when `route` is not provided.
+   * Coordinates are in RN Maps order: { latitude, longitude }.
+   */
+  polylineCoords?: { latitude: number; longitude: number }[] | null;
+  polylineColor?: string;
+  polylineWidth?: number;
   onOriginSelect?: (location: Location) => void;
   onDestinationSelect?: (location: Location) => void;
   showRoute?: boolean;
@@ -61,6 +68,9 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   destination,
   stopovers = [],
   route,
+  polylineCoords = null,
+  polylineColor = '#3498db',
+  polylineWidth = 5,
   onOriginSelect,
   onDestinationSelect,
   showRoute = false,
@@ -118,6 +128,28 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
           longitudeDelta: Math.max(lonDelta, 0.01)
         });
       }
+    } else if (polylineCoords && polylineCoords.length > 0) {
+      const valid = polylineCoords.filter(c => typeof c?.latitude === 'number' && typeof c?.longitude === 'number' && !(c.latitude === 0 && c.longitude === 0));
+      if (valid.length > 0) {
+        const lats = valid.map(c => c.latitude);
+        const lons = valid.map(c => c.longitude);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const minLon = Math.min(...lons);
+        const maxLon = Math.max(...lons);
+
+        const centerLat = (minLat + maxLat) / 2;
+        const centerLon = (minLon + maxLon) / 2;
+        const latDelta = (maxLat - minLat) * 1.3;
+        const lonDelta = (maxLon - minLon) * 1.3;
+
+        setRegion({
+          latitude: centerLat,
+          longitude: centerLon,
+          latitudeDelta: Math.max(latDelta, 0.01),
+          longitudeDelta: Math.max(lonDelta, 0.01)
+        });
+      }
     } else if (origin) {
       setRegion({
         ...origin.coordinates,
@@ -125,13 +157,13 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         longitudeDelta: 0.05
       });
     }
-  }, [route, origin]);
+  }, [route, origin, polylineCoords]);
 
   // Fetch preview polyline when origin and destination are set but no computed route
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (route || !origin || !destination) {
+      if (route || (polylineCoords && polylineCoords.length >= 2) || !origin || !destination) {
         setPreviewCoords(null);
         setPreviewSource(null);
         return;
@@ -150,7 +182,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [origin?.coordinates.latitude, origin?.coordinates.longitude, destination?.coordinates.latitude, destination?.coordinates.longitude, !!route]);
+  }, [origin?.coordinates.latitude, origin?.coordinates.longitude, destination?.coordinates.latitude, destination?.coordinates.longitude, !!route, !!(polylineCoords && polylineCoords.length >= 2)]);
 
   const normalizeTransportType = (t?: string) => (t ?? '').trim().toLowerCase();
 
@@ -435,6 +467,15 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
                 />
               );
             })}
+
+            {/* Render custom polyline (e.g. private vehicle) when no Route object is provided */}
+            {showRoute && !route && polylineCoords && polylineCoords.length >= 2 && (
+              <LeafletPolyline
+                positions={polylineCoords.map(c => [c.latitude, c.longitude] as [number, number])}
+                color={polylineColor}
+                weight={polylineWidth}
+              />
+            )}
           </MapContainer>
         </div>
       </View>
@@ -614,7 +655,20 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         ))}
 
         {/* Fallback route rendering for simple routes without segments */}
-        {showRoute && !route && origin && destination && previewCoords && (
+        {showRoute && !route && polylineCoords && polylineCoords.length >= 2 && (
+          <Polyline
+            coordinates={polylineCoords}
+            strokeColor={polylineColor}
+            strokeWidth={polylineWidth}
+            geodesic={false}
+            zIndex={5}
+            lineCap="round"
+            lineJoin="round"
+          />
+        )}
+
+        {/* Preview polyline only when we don't have a computed/explicit geometry */}
+        {showRoute && !route && (!polylineCoords || polylineCoords.length < 2) && origin && destination && previewCoords && (
           <Polyline
             coordinates={previewCoords}
             strokeColor="#3498db"
