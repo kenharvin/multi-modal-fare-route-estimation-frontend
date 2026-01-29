@@ -11,7 +11,7 @@ import TripSummary from '@components/TripSummary';
 import RouteCard from '@components/RouteCard';
 import MapViewComponent from '@components/MapViewComponent';
 import { Button, ActivityIndicator } from 'react-native-paper';
-import { fetchRoutes } from '@services/api';
+import { fetchRoutes, fetchRouteGeometry } from '@services/api';
 type TripPlanRouteProp = RouteProp<RootStackParamList, 'TripPlan'>;
 type TripPlanNavigationProp = StackNavigationProp<RootStackParamList, 'TripPlan'>;
 
@@ -38,6 +38,29 @@ const TripPlanScreen: React.FC = () => {
   const [availableRoutes, setAvailableRoutes] = useState<Route[]>([]);
   const [selectedNewRoute, setSelectedNewRoute] = useState<Route | null>(null);
   const [showNewDestinationInput, setShowNewDestinationInput] = useState<boolean>(false);
+  const [isGeometryLoading, setIsGeometryLoading] = useState<boolean>(false);
+  const [geometryFetchedIds, setGeometryFetchedIds] = useState<Set<string>>(new Set());
+
+  const handleSelectNewRoute = async (r: Route) => {
+    setSelectedNewRoute(r);
+    try {
+      setIsGeometryLoading(true);
+      if (!geometryFetchedIds.has(r.id)) {
+        const updated = await fetchRouteGeometry(r);
+        setSelectedNewRoute(updated);
+        setAvailableRoutes(prev => prev.map(x => (x.id === r.id ? updated : x)));
+        setGeometryFetchedIds(prev => {
+          const next = new Set(prev);
+          next.add(r.id);
+          return next;
+        });
+      }
+    } catch (e) {
+      console.warn('[TripPlan] Failed to fetch route geometry:', e);
+    } finally {
+      setIsGeometryLoading(false);
+    }
+  };
 
   const handleAddDestination = async () => {
     if (!newDestination) {
@@ -171,6 +194,11 @@ const TripPlanScreen: React.FC = () => {
               <ActivityIndicator size="small" color="#3498db" />
               <Text style={styles.loadingText}>Finding routes...</Text>
             </View>
+          ) : isGeometryLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#3498db" />
+              <Text style={styles.loadingText}>Loading route on map…</Text>
+            </View>
           ) : availableRoutes.length > 0 ? (
             <>
               <Text style={styles.routesLabel}>Available Routes:</Text>
@@ -180,7 +208,7 @@ const TripPlanScreen: React.FC = () => {
                   route={route}
                   isSelected={selectedNewRoute?.id === route.id}
                   rank={index + 1}
-                  onSelect={() => setSelectedNewRoute(route)}
+                  onSelect={() => handleSelectNewRoute(route)}
                 />
               ))}
               <View style={styles.buttonRow}>

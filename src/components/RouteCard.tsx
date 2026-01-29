@@ -41,6 +41,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
     if (s.length === 0) return [] as string[];
     const out: string[] = [];
     let lastNonWalkKey: string | null = null;
+    let sawWalkSinceLastNonWalk = false;
 
     for (let i = 0; i < s.length; i++) {
       const seg = s[i];
@@ -49,7 +50,11 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
       const routeName = (seg.routeName || '').trim();
       const key = isWalk ? null : `${seg.transportType}:${routeName}`;
 
-      if (!isWalk && lastNonWalkKey && key && key !== lastNonWalkKey) {
+      if (isWalk) {
+        if (lastNonWalkKey) sawWalkSinceLastNonWalk = true;
+      }
+
+      if (!isWalk && lastNonWalkKey && key && (key !== lastNonWalkKey || sawWalkSinceLastNonWalk)) {
         const transferAt = s[i - 1]?.destination?.name || 'transfer point';
         out.push(`Transfer at ${transferAt}`);
       }
@@ -60,6 +65,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
         const rideName = routeName ? `${label} (${routeName})` : label;
         out.push(`Take ${rideName}: ${seg.origin?.name || 'origin'} → ${seg.destination?.name || 'destination'} (~${seg.estimatedTime} min, ₱${(seg.fare || 0).toFixed(0)})`);
         lastNonWalkKey = key;
+        sawWalkSinceLastNonWalk = false;
       }
     }
 

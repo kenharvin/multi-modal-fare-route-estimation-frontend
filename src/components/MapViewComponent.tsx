@@ -19,6 +19,7 @@ let TileLayer: any = null;
 let LeafletMarker: any = null;
 let LeafletPolyline: any = null;
 let Popup: any = null;
+let CircleMarker: any = null;
 
 if (Platform.OS !== 'web') {
   const MapModule = require('react-native-maps');
@@ -36,6 +37,7 @@ if (Platform.OS !== 'web') {
     LeafletMarker = LeafletModule.Marker;
     LeafletPolyline = LeafletModule.Polyline;
     Popup = LeafletModule.Popup;
+    CircleMarker = LeafletModule.CircleMarker;
   } catch (e) {
     console.log('Leaflet not available');
   }
@@ -208,6 +210,8 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     const nt = normalizeTransportType(t);
     if (nt === 'lrt' || nt === 'mrt' || nt === 'pnr' || nt === 'train') return 'train';
     if (nt === 'bus') return 'bus';
+    if (nt === 'jeep' || nt === 'jeepney') return 'bus';
+    if (nt === 'uv' || nt === 'uvexpress' || nt === 'uv express' || nt === 'uv_express') return 'car';
     if (nt === 'taxi') return 'car';
     if (nt === 'tricycle') return 'bicycle';
     if (nt === 'walk' || nt === 'walking' || nt === 'foot' || nt === 'pedestrian') return 'walk';
@@ -245,6 +249,26 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     return isValidCoord(lastGeom) ? lastGeom : segment.destination?.coordinates;
   };
 
+  const getSegmentEndpointMarkers = () => {
+    if (!route || !Array.isArray(route.segments) || route.segments.length === 0) {
+      return [] as Array<{ id: string; coordinate: { latitude: number; longitude: number }; modeType?: string; kind: 'start' | 'end' }>;
+    }
+    const out: Array<{ id: string; coordinate: { latitude: number; longitude: number }; modeType?: string; kind: 'start' | 'end' }> = [];
+    for (const seg of route.segments) {
+      const s = getSegmentBoardCoord(seg);
+      const e = getSegmentAlightCoord(seg);
+      if (!isValidCoord(s) || !isValidCoord(e)) continue;
+
+      // If start and end collapse to the same coordinate, render one marker.
+      const same = coordKey(s) === coordKey(e);
+      out.push({ id: `${seg.id}-start`, coordinate: s, modeType: seg.transportType, kind: 'start' });
+      if (!same) {
+        out.push({ id: `${seg.id}-end`, coordinate: e, modeType: seg.transportType, kind: 'end' });
+      }
+    }
+    return out;
+  };
+
   const coordKey = (c: { latitude: number; longitude: number }) => `${c.latitude.toFixed(6)},${c.longitude.toFixed(6)}`;
 
   const offsetCoord = (c: { latitude: number; longitude: number }, dLon: number, dLat: number) => ({
@@ -264,8 +288,39 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       }>;
     }
 
-    const nonWalk = route.segments.filter(s => s && !isWalkType(s.transportType));
-    if (nonWalk.length < 2) {
+    const segs = route.segments.filter(Boolean);
+    // Identify transfer points as "boardings" into a non-walk segment that is either:
+    // - a different mode than the last non-walk segment, OR
+    // - preceded by a walk connector (re-board) even if same mode.
+    const transferIndices: number[] = [];
+    let lastNonWalkIdx: number | null = null;
+    let sawWalkSinceLastNonWalk = false;
+    for (let i = 0; i < segs.length; i++) {
+      const seg = segs[i];
+      const isWalk = isWalkType(seg.transportType);
+      if (isWalk) {
+        if (lastNonWalkIdx !== null) sawWalkSinceLastNonWalk = true;
+        continue;
+      }
+      if (lastNonWalkIdx === null) {
+        lastNonWalkIdx = i;
+        sawWalkSinceLastNonWalk = false;
+        continue;
+      }
+
+      const prev = segs[lastNonWalkIdx];
+      const cur = seg;
+      const prevType = normalizeTransportType(prev.transportType);
+      const curType = normalizeTransportType(cur.transportType);
+
+      if (prevType && curType && (prevType !== curType || sawWalkSinceLastNonWalk)) {
+        transferIndices.push(i);
+      }
+      lastNonWalkIdx = i;
+      sawWalkSinceLastNonWalk = false;
+    }
+
+    if (transferIndices.length === 0) {
       return [] as Array<{
         coordinate: { latitude: number; longitude: number };
         number: number;
@@ -287,15 +342,17 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     const seen = new Set<string>();
     let transferNo = 0;
 
-    for (let i = 1; i < nonWalk.length; i++) {
-      const prev = nonWalk[i - 1];
-      const cur = nonWalk[i];
+    for (const idx of transferIndices) {
+      const cur = segs[idx];
+      // find the previous non-walk segment before idx
+      let j = idx - 1;
+      while (j >= 0 && isWalkType(segs[j].transportType)) j -= 1;
+      if (j < 0) continue;
+      const prev = segs[j];
 
       const prevType = normalizeTransportType(prev.transportType);
       const curType = normalizeTransportType(cur.transportType);
-
-      // Only mark a transfer when the non-walk mode actually changes (bus->train, etc.).
-      if (!prevType || !curType || prevType === curType) continue;
+      if (!prevType || !curType) continue;
 
       const alight = getSegmentAlightCoord(prev);
       const board = getSegmentBoardCoord(cur);
@@ -384,6 +441,63 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       makeTransferIcon = null;
     }
 
+    let makeEndDotIcon: ((modeType?: string) => any) | null = null;
+    try {
+      const L = require('leaflet');
+      makeEndDotIcon = (modeType?: string) => {
+        const bg = getTransportColor(modeType);
+        return L.divIcon({
+          className: '',
+          html: `
+            <div style="
+              width: 12px;
+              height: 12px;
+              border-radius: 999px;
+              background: ${bg};
+              border: 2px solid #fff;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+            "></div>
+          `,
+          iconSize: [12, 12],
+          iconAnchor: [6, 6]
+        });
+      };
+    } catch {
+      makeEndDotIcon = null;
+    }
+
+    let makeEndpointIcon: ((modeType?: string) => any) | null = null;
+    try {
+      const L = require('leaflet');
+      makeEndpointIcon = (modeType?: string) => {
+        const bg = getTransportColor(modeType);
+        const icon = getModeEmoji(modeType);
+        return L.divIcon({
+          className: '',
+          html: `
+            <div style="
+              width: 22px;
+              height: 22px;
+              border-radius: 7px;
+              background: ${bg};
+              border: 2px solid #fff;
+              color: #fff;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+              line-height: 1;
+              font-size: 12px;
+            ">${icon}</div>
+          `,
+          iconSize: [22, 22],
+          iconAnchor: [11, 11],
+        });
+      };
+    } catch {
+      makeEndpointIcon = null;
+    }
+
     return (
       <View style={styles.container}>
         <div style={{ width: '100%', height: '100%' }}>
@@ -467,6 +581,15 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
                 />
               );
             })}
+
+            {/* Segment start/end badges (mode icons) */}
+            {route && getSegmentEndpointMarkers().map((m) => (
+              <LeafletMarker
+                key={`seg-pt-${m.id}`}
+                position={[m.coordinate.latitude, m.coordinate.longitude]}
+                icon={makeEndpointIcon ? makeEndpointIcon(m.modeType) : (makeEndDotIcon ? makeEndDotIcon(m.modeType) : undefined)}
+              />
+            ))}
 
             {/* Render custom polyline (e.g. private vehicle) when no Route object is provided */}
             {showRoute && !route && polylineCoords && polylineCoords.length >= 2 && (
@@ -616,6 +739,21 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
             </React.Fragment>
           );
         })}
+
+        {/* Segment start/end badges (mode icons) */}
+        {route && getSegmentEndpointMarkers().map((m) => (
+          <Marker
+            key={`seg-pt-${m.id}`}
+            coordinate={m.coordinate}
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false}
+            zIndex={7}
+          >
+            <View style={[styles.segmentEndpointBadge, { backgroundColor: getTransportColor(m.modeType) }]}>
+              <Ionicons name={getModeIconName(m.modeType) as any} size={13} color="#fff" />
+            </View>
+          </Marker>
+        ))}
 
         {/* Numbered transfer-point markers (A=alight, B=board; kept minimal to avoid clutter) */}
         {showTransferMarkers && getTransferMarkers().map((m) => (
@@ -794,6 +932,29 @@ const styles = StyleSheet.create({
       },
     }),
     marginBottom: 8
+  },
+  segmentEndpointBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+      },
+      android: {
+        elevation: 4,
+      },
+      web: {
+        boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
+      },
+    }),
   },
   controlButtonActive: {
     backgroundColor: '#3498db'

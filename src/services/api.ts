@@ -266,11 +266,18 @@ export const fetchRoutes = async (
  * Uses backend /public-transport/geometry to avoid re-running route planning.
  */
 export const fetchRouteGeometry = async (route: Route): Promise<Route> => {
-  const legs = (route.segments || []).map((s) => ({
-    origin_node: s.originNode,
-    destination_node: s.destinationNode,
-    mode: s.mode || (s.transportType as any)
-  }));
+  const legs = (route.segments || []).map((s) => {
+    const mode = s.mode || (s.transportType as any);
+    const isWalk = String(mode).toLowerCase() === 'walk' || String(s.transportType).toLowerCase() === 'walk';
+    return {
+      origin_node: s.originNode,
+      destination_node: s.destinationNode,
+      mode,
+      // Helps backend avoid reusing cached geometry from a different route that shares endpoints.
+      // Only send for transit legs.
+      route_id: isWalk ? undefined : (s.routeName || undefined)
+    };
+  });
 
   const res = await apiClient.post('/public-transport/geometry?gtfs_overlay=0', { legs });
   const geoms: any[] = Array.isArray(res.data?.geometries) ? res.data.geometries : [];

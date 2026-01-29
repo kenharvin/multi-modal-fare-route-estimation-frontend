@@ -22,6 +22,7 @@ const RouteResultsScreen: React.FC = () => {
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
   const hasFetchedRef = useRef<boolean>(false);
   const [isGeometryLoading, setIsGeometryLoading] = useState<boolean>(false);
+  const [geometryFetchedIds, setGeometryFetchedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     // Guard against duplicate fetches caused by re-mounts or fast refresh
@@ -58,14 +59,19 @@ const RouteResultsScreen: React.FC = () => {
 
   const handleSelectRoute = async (route: Route) => {
     setSelectedRoute(route);
-    // Fetch road-following polylines on demand
+    // Fetch accurate polylines on demand (on tap).
+    // Even if compact mode returned preview geometry, we still fetch full per-leg geometry once.
     try {
       setIsGeometryLoading(true);
-      const hasAnyGeometry = (route.segments || []).some(s => Array.isArray(s.geometry) && s.geometry.length >= 3);
-      if (!hasAnyGeometry) {
+      if (!geometryFetchedIds.has(route.id)) {
         const updated = await fetchRouteGeometry(route);
         setSelectedRoute(updated);
         setRoutes(prev => prev.map(r => (r.id === route.id ? updated : r)));
+        setGeometryFetchedIds(prev => {
+          const next = new Set(prev);
+          next.add(route.id);
+          return next;
+        });
       }
     } catch (e) {
       console.warn('[RouteResults] Failed to fetch route geometry:', e);
