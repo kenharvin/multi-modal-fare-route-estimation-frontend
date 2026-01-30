@@ -28,6 +28,7 @@ export enum TransportType {
 
 // User preferences for public transport
 export enum PublicTransportPreference {
+  BALANCED = 'balanced',
   LOWEST_FARE = 'lowest_fare',
   SHORTEST_TIME = 'shortest_time',
   FEWEST_TRANSFERS = 'fewest_transfers'
@@ -48,6 +49,8 @@ export interface RouteSegment {
   originNode?: string;
   destinationNode?: string;
   mode?: string;
+  /** Exact planned node sequence for this leg (from backend RouteLeg.path_nodes). */
+  pathNodes?: Array<string | number>;
 }
 
 // Complete route with multiple segments

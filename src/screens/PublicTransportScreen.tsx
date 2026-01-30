@@ -15,14 +15,16 @@ const PublicTransportScreen: React.FC = () => {
   const navigation = useNavigation<PublicTransportNavigationProp>();
   const { selectedOrigin, selectedDestination, setSelectedOrigin, setSelectedDestination } = useLocation();
   const { setIsLoading } = useApp();
-  const [preference, setPreference] = useState<PublicTransportPreference>(PublicTransportPreference.SHORTEST_TIME);
+  const [preference, setPreference] = useState<PublicTransportPreference>(PublicTransportPreference.BALANCED);
   const [showMap, setShowMap] = useState<boolean>(false);
-  const [budget, setBudget] = useState<string>('500');
+  // Leave empty by default; only constrain when user enters a value.
+  const [budget, setBudget] = useState<string>('');
   // Leave empty by default so long-distance trips aren't accidentally filtered out.
   const [maxTransfers, setMaxTransfers] = useState<string>('');
   const [preferredModes, setPreferredModes] = useState<string[]>(['walk','jeepney','bus','lrt','mrt','pnr']);
 
   const preferences = [
+    { value: PublicTransportPreference.BALANCED, label: 'Recommended', icon: 'star' },
     { value: PublicTransportPreference.LOWEST_FARE, label: 'Lowest Fare', icon: 'cash' },
     { value: PublicTransportPreference.SHORTEST_TIME, label: 'Shortest Time', icon: 'clock-fast' },
     { value: PublicTransportPreference.FEWEST_TRANSFERS, label: 'Fewest Transfers', icon: 'swap-horizontal' }
@@ -125,7 +127,7 @@ const PublicTransportScreen: React.FC = () => {
               keyboardType="numeric"
               value={budget}
               onChangeText={setBudget}
-              placeholder="e.g. 500"
+              placeholder="Optional (e.g. 150)"
             />
           </View>
           <View style={styles.inputCol}>

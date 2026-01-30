@@ -63,7 +63,10 @@ const RouteResultsScreen: React.FC = () => {
     // Even if compact mode returned preview geometry, we still fetch full per-leg geometry once.
     try {
       setIsGeometryLoading(true);
-      if (!geometryFetchedIds.has(route.id)) {
+      const isSameSelection = selectedRoute?.id === route.id;
+      // If the user taps the already-selected route again, treat it as a manual refresh.
+      // This helps when backend geometry/caches have changed.
+      if (!geometryFetchedIds.has(route.id) || isSameSelection) {
         const updated = await fetchRouteGeometry(route);
         setSelectedRoute(updated);
         setRoutes(prev => prev.map(r => (r.id === route.id ? updated : r)));

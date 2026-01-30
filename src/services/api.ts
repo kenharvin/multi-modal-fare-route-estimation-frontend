@@ -152,6 +152,7 @@ export const fetchRoutes = async (
     try {
     // Map preference enum to backend preference_type
     const preferenceMap: Record<PublicTransportPreference, string> = {
+      [PublicTransportPreference.BALANCED]: 'balanced',
       [PublicTransportPreference.LOWEST_FARE]: 'lowest_fare',
       [PublicTransportPreference.SHORTEST_TIME]: 'shortest_time',
       [PublicTransportPreference.FEWEST_TRANSFERS]: 'fewest_transfers'
@@ -266,6 +267,43 @@ export const fetchRoutes = async (
  * Uses backend /public-transport/geometry to avoid re-running route planning.
  */
 export const fetchRouteGeometry = async (route: Route): Promise<Route> => {
+  const toLatLon = (p: any): { latitude: number; longitude: number } | null => {
+    if (!Array.isArray(p) || p.length < 2) return null;
+    const a = Number(p[0]);
+    const b = Number(p[1]);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+
+    // Backend *should* return GeoJSON order: [lon,lat].
+    // Some sources (or future changes) may emit [lat,lon]. Detect using ranges.
+    const aLooksLat = Math.abs(a) <= 90;
+    const bLooksLat = Math.abs(b) <= 90;
+    const bLooksLon = Math.abs(b) <= 180;
+
+    // If [lat,lon] (common in some libs): a=lat, b=lon
+    if (aLooksLat && bLooksLon && !bLooksLat) {
+      return { latitude: a, longitude: b };
+    }
+
+    // Default: [lon,lat]
+    return { latitude: b, longitude: a };
+  };
+
+  const isValidLatLon = (c: any): c is { latitude: number; longitude: number } => {
+    const lat = c?.latitude;
+    const lon = c?.longitude;
+    return (
+      typeof lat === 'number' &&
+      typeof lon === 'number' &&
+      Number.isFinite(lat) &&
+      Number.isFinite(lon) &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lon >= -180 &&
+      lon <= 180 &&
+      !(lat === 0 && lon === 0)
+    );
+  };
+
   const legs = (route.segments || []).map((s) => {
     const mode = s.mode || (s.transportType as any);
     const isWalk = String(mode).toLowerCase() === 'walk' || String(s.transportType).toLowerCase() === 'walk';
@@ -273,25 +311,36 @@ export const fetchRouteGeometry = async (route: Route): Promise<Route> => {
       origin_node: s.originNode,
       destination_node: s.destinationNode,
       mode,
+      // Exact planned node sequence (if available) lets backend rebuild the polyline
+      // from the chosen path instead of OSRM guessing between endpoints.
+      path_nodes: Array.isArray((s as any).pathNodes) ? (s as any).pathNodes : undefined,
       // Helps backend avoid reusing cached geometry from a different route that shares endpoints.
       // Only send for transit legs.
       route_id: isWalk ? undefined : (s.routeName || undefined)
     };
   });
 
-  const res = await apiClient.post('/public-transport/geometry?gtfs_overlay=0', { legs });
+  // On selection, prefer GTFS rail shapes when available for more accurate train polylines.
+  const res = await apiClient.post('/public-transport/geometry?gtfs_overlay=1', { legs });
   const geoms: any[] = Array.isArray(res.data?.geometries) ? res.data.geometries : [];
 
   const updatedSegments = (route.segments || []).map((seg, idx) => {
     const lonlat = Array.isArray(geoms[idx]) ? geoms[idx] : null;
     const geometry = Array.isArray(lonlat)
       ? lonlat
-          .filter((p: any) => Array.isArray(p) && p.length >= 2)
-          .map((p: number[]) => ({ latitude: p[1], longitude: p[0] }))
+          .map(toLatLon)
+          .filter((c): c is { latitude: number; longitude: number } => !!c && isValidLatLon(c))
       : undefined;
+
+    const mode0 = String(seg.mode || seg.transportType || '').toLowerCase();
+    const isWalk = mode0 === 'walk' || mode0 === 'walking' || mode0 === 'foot' || mode0 === 'pedestrian';
+    const hasExistingRichGeom = Array.isArray(seg.geometry) && seg.geometry.length >= 4;
+    const isEndpointOnlyGeom = Array.isArray(geometry) && geometry.length <= 2;
+    const shouldKeepExisting = !isWalk && hasExistingRichGeom && isEndpointOnlyGeom;
+
     return {
       ...seg,
-      geometry: geometry && geometry.length >= 2 ? geometry : seg.geometry
+      geometry: shouldKeepExisting ? seg.geometry : (geometry && geometry.length >= 2 ? geometry : seg.geometry)
     };
   });
 
@@ -462,6 +511,7 @@ const convertBackendRouteToFrontend = (backendResponse: any): Route => {
           : (leg.route_id || leg.mode || 'Transit'),
       originNode: leg.origin_node,
       destinationNode: leg.destination_node,
+      pathNodes: Array.isArray(leg.path_nodes) ? leg.path_nodes : undefined,
       mode: leg.mode,
       origin: {
         name: leg.origin,

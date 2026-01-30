@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text, Platform } from 'react-native';
-import { Location, Stopover, Route, RouteSegment } from '@/types';
+import { Location, Stopover, Route, RouteSegment, TransportType } from '@/types';
 import { getTransportColor } from '@/utils/transportUtils';
 import MapLegend from './MapLegend';
 import { getPreviewPolyline } from '@/services/api';
@@ -188,6 +188,17 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
 
   const normalizeTransportType = (t?: string) => (t ?? '').trim().toLowerCase();
 
+  const getTransportColorSafe = (t?: string) => {
+    const nt = normalizeTransportType(t);
+    if (!nt) return '#95a5a6';
+    if (nt === 'walk' || nt === 'walking' || nt === 'foot' || nt === 'pedestrian') return getTransportColor(TransportType.WALK);
+    if (nt === 'bus') return getTransportColor(TransportType.BUS);
+    if (nt === 'jeep' || nt === 'jeepney' || nt === 'modernjeepney' || nt === 'modern_jeepney') return getTransportColor(TransportType.JEEPNEY);
+    if (nt === 'uv' || nt === 'uvexpress' || nt === 'uv express' || nt === 'uv_express') return getTransportColor(TransportType.UV_EXPRESS);
+    if (nt === 'train' || nt === 'lrt' || nt === 'mrt' || nt === 'pnr') return getTransportColor(TransportType.TRAIN);
+    return '#95a5a6';
+  };
+
   const isWalkType = (t?: string) => {
     const nt = normalizeTransportType(t);
     return nt === 'walk' || nt === 'walking' || nt === 'foot' || nt === 'pedestrian';
@@ -231,12 +242,99 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   };
 
   const isValidCoord = (c: any): c is { latitude: number; longitude: number } => {
+    const lat = c?.latitude;
+    const lon = c?.longitude;
     return (
-      !!c &&
-      typeof c.latitude === 'number' &&
-      typeof c.longitude === 'number' &&
-      !(c.latitude === 0 && c.longitude === 0)
+      typeof lat === 'number' &&
+      typeof lon === 'number' &&
+      Number.isFinite(lat) &&
+      Number.isFinite(lon) &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lon >= -180 &&
+      lon <= 180 &&
+      !(lat === 0 && lon === 0)
     );
+  };
+
+  const haversineM = (a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) => {
+    const R = 6371000;
+    const toRad = (x: number) => (x * Math.PI) / 180;
+    const dLat = toRad(b.latitude - a.latitude);
+    const dLon = toRad(b.longitude - a.longitude);
+    const lat1 = toRad(a.latitude);
+    const lat2 = toRad(b.latitude);
+    const s1 = Math.sin(dLat / 2);
+    const s2 = Math.sin(dLon / 2);
+    const h = s1 * s1 + Math.cos(lat1) * Math.cos(lat2) * s2 * s2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  };
+
+  const polylineLenM = (coords: { latitude: number; longitude: number }[]) => {
+    if (!Array.isArray(coords) || coords.length < 2) return 0;
+    let total = 0;
+    for (let i = 0; i < coords.length - 1; i++) {
+      total += haversineM(coords[i], coords[i + 1]);
+    }
+    return total;
+  };
+
+  const computeRenderPaths = (segments: RouteSegment[]) => {
+    const segPaths: { latitude: number; longitude: number }[][] = [];
+    const connectors: { latitude: number; longitude: number }[][] = [];
+
+    const getPath = (segment: RouteSegment) => {
+      const safeGeom = Array.isArray(segment.geometry) ? segment.geometry.filter(isValidCoord) : [];
+      const fallback = [segment.origin.coordinates, segment.destination.coordinates].filter(isValidCoord);
+      return safeGeom.length >= 2 ? safeGeom : fallback;
+    };
+
+    for (let i = 0; i < segments.length; i++) {
+      segPaths.push(getPath(segments[i]));
+    }
+
+    // Display-only transfer smoothing:
+    // If a transit leg appears to detour to reach the next leg's start (often due to
+    // stop placement across the road or missing crosswalk edges), trim the tail and
+    // show a straight walk connector.
+    for (let i = 0; i < segments.length - 1; i++) {
+      const a = segments[i];
+      const b = segments[i + 1];
+      const aIsWalk = isWalkType(a.transportType);
+      const bIsWalk = isWalkType(b.transportType);
+      if (aIsWalk || bIsWalk) continue;
+
+      const aPath = segPaths[i];
+      if (!Array.isArray(aPath) || aPath.length < 6) continue;
+
+      const target = isValidCoord(b.origin.coordinates)
+        ? b.origin.coordinates
+        : (Array.isArray(b.geometry) ? b.geometry.find(isValidCoord) : null);
+      if (!target || !isValidCoord(target)) continue;
+
+      const searchUpto = Math.max(0, aPath.length - 3);
+      let bestIdx = -1;
+      let bestM = Number.POSITIVE_INFINITY;
+      for (let k = 0; k < searchUpto; k++) {
+        const d = haversineM(aPath[k], target);
+        if (d < bestM) {
+          bestM = d;
+          bestIdx = k;
+        }
+      }
+      if (bestIdx < 0 || bestM > 80) continue;
+
+      const tailM = polylineLenM(aPath.slice(bestIdx));
+      const directM = haversineM(aPath[bestIdx], target);
+      const isShortHop = directM <= 140;
+      const isDetour = tailM > Math.max(220, directM * 3.0);
+      if (!isShortHop || !isDetour) continue;
+
+      segPaths[i] = aPath.slice(0, bestIdx + 1);
+      connectors.push([aPath[bestIdx], target]);
+    }
+
+    return { segPaths, connectors };
   };
 
   const getSegmentBoardCoord = (segment: RouteSegment) => {
@@ -445,7 +543,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     try {
       const L = require('leaflet');
       makeEndDotIcon = (modeType?: string) => {
-        const bg = getTransportColor(modeType);
+        const bg = getTransportColorSafe(modeType);
         return L.divIcon({
           className: '',
           html: `
@@ -470,7 +568,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     try {
       const L = require('leaflet');
       makeEndpointIcon = (modeType?: string) => {
-        const bg = getTransportColor(modeType);
+        const bg = getTransportColorSafe(modeType);
         const icon = getModeEmoji(modeType);
         return L.divIcon({
           className: '',
@@ -560,27 +658,114 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
             ))}
 
             {/* Render route segments with different colors */}
-            {route && route.segments.map((segment) => {
-              // Use actual geometry if available, otherwise fall back to straight line
-              const pathCoordinates = segment.geometry && segment.geometry.length > 0
-                ? segment.geometry.map(coord => [coord.latitude, coord.longitude] as [number, number])
-                : [
-                    [segment.origin.coordinates.latitude, segment.origin.coordinates.longitude] as [number, number],
-                    [segment.destination.coordinates.latitude, segment.destination.coordinates.longitude] as [number, number]
-                  ];
+            {route && (() => {
+              const { segPaths, connectors } = computeRenderPaths(route.segments);
 
-              const isWalk = isWalkType(segment.transportType);
+              // Add endpoint connectors for pinned origin/destination when the computed route
+              // starts/ends at nearby stops but doesn't include an explicit walk leg.
+              const segPaths2 = segPaths.map((p) => (Array.isArray(p) ? [...p] : p));
+              const allConnectors = [...connectors];
+
+              try {
+                const firstIdx = 0;
+                const lastIdx = Math.max(0, segPaths2.length - 1);
+
+                const originPt = origin?.coordinates;
+                const destPt = destination?.coordinates;
+
+                // Origin: simple dashed connector to route start (if not already walking).
+                if (
+                  originPt &&
+                  segPaths2.length > 0 &&
+                  !isWalkType(route.segments[firstIdx]?.transportType) &&
+                  Array.isArray(segPaths2[firstIdx]) &&
+                  segPaths2[firstIdx].length >= 2
+                ) {
+                  const startPt = segPaths2[firstIdx][0];
+                  const d0 = haversineM(originPt, startPt);
+                  if (d0 > 25 && d0 <= 1200) {
+                    allConnectors.push([originPt, startPt]);
+                  }
+                }
+
+                // Destination: if the last transit leg detours just to reach the exact stop,
+                // trim it at the closest approach and add a short dashed walk connector.
+                if (
+                  destPt &&
+                  segPaths2.length > 0 &&
+                  !isWalkType(route.segments[lastIdx]?.transportType) &&
+                  Array.isArray(segPaths2[lastIdx]) &&
+                  segPaths2[lastIdx].length >= 6
+                ) {
+                  const path = segPaths2[lastIdx];
+                  const searchUpto = Math.max(0, path.length - 3);
+                  let bestIdx = -1;
+                  let bestM = Number.POSITIVE_INFINITY;
+                  for (let k = 0; k < searchUpto; k++) {
+                    const d = haversineM(path[k], destPt);
+                    if (d < bestM) {
+                      bestM = d;
+                      bestIdx = k;
+                    }
+                  }
+
+                  if (bestIdx >= 0 && bestM <= 80) {
+                    const tailM = polylineLenM(path.slice(bestIdx));
+                    const directM = haversineM(path[bestIdx], destPt);
+                    const isShortHop = directM <= 160;
+                    const isDetour = tailM > Math.max(220, directM * 3.0);
+                    if (isShortHop && isDetour) {
+                      segPaths2[lastIdx] = path.slice(0, bestIdx + 1);
+                      allConnectors.push([path[bestIdx], destPt]);
+                    }
+                  } else if (Array.isArray(segPaths2[lastIdx]) && segPaths2[lastIdx].length >= 2) {
+                    const endPt = segPaths2[lastIdx][segPaths2[lastIdx].length - 1];
+                    const d1 = haversineM(endPt, destPt);
+                    if (d1 > 25 && d1 <= 1200) {
+                      allConnectors.push([endPt, destPt]);
+                    }
+                  }
+                }
+              } catch {
+                // best-effort only
+              }
 
               return (
-                <LeafletPolyline
-                  key={segment.id}
-                  positions={pathCoordinates}
-                  color={isWalk ? '#7f8c8d' : getTransportColor(segment.transportType)}
-                  weight={isWalk ? 4 : 5}
-                  dashArray={isWalk ? '3 10' : undefined}
-                />
+                <>
+                  {segPaths2.map((path, idx) => {
+                    if (!Array.isArray(path) || path.length < 2) return null;
+
+                    const segment = route.segments[idx];
+                    const isWalk = isWalkType(segment.transportType);
+                    const positions = path.map(coord => [coord.latitude, coord.longitude] as [number, number]);
+
+                    return (
+                      <LeafletPolyline
+                        key={`${route.id}-${segment.id}-${idx}`}
+                        positions={positions}
+                        color={isWalk ? '#7f8c8d' : getTransportColor(segment.transportType)}
+                        weight={isWalk ? 4 : 5}
+                        dashArray={isWalk ? '3 10' : undefined}
+                      />
+                    );
+                  })}
+
+                  {allConnectors.map((conn, idx) => {
+                    if (!Array.isArray(conn) || conn.length < 2) return null;
+                    const positions = conn.map(c => [c.latitude, c.longitude] as [number, number]);
+                    return (
+                      <LeafletPolyline
+                        key={`transfer-connector-${idx}`}
+                        positions={positions}
+                        color={'#7f8c8d'}
+                        weight={4}
+                        dashArray={'3 10'}
+                      />
+                    );
+                  })}
+                </>
               );
-            })}
+            })()}
 
             {/* Segment start/end badges (mode icons) */}
             {route && getSegmentEndpointMarkers().map((m) => (
@@ -707,38 +892,125 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         ))}
 
         {/* Render route segments with different colors per transport type */}
-        {route && route.segments.map((segment, index) => {
-          // Use actual geometry if available, otherwise fall back to straight line
-          const pathCoordinates = segment.geometry && segment.geometry.length > 0
-            ? segment.geometry
-            : [segment.origin.coordinates, segment.destination.coordinates].filter(c => !(c.latitude === 0 && c.longitude === 0));
+        {route && (() => {
+          const { segPaths, connectors } = computeRenderPaths(route.segments);
 
-          const isWalk = isWalkType(segment.transportType);
+          const segPaths2 = segPaths.map((p) => (Array.isArray(p) ? [...p] : p));
+          const allConnectors = [...connectors];
 
-          console.log(`[MapView] Rendering segment ${index}:`, {
-            id: segment.id,
-            hasGeometry: !!segment.geometry,
-            geometryLength: segment.geometry?.length || 0,
-            pathLength: pathCoordinates.length,
-            firstCoord: pathCoordinates[0],
-            lastCoord: pathCoordinates[pathCoordinates.length - 1]
-          });
+          try {
+            const firstIdx = 0;
+            const lastIdx = Math.max(0, segPaths2.length - 1);
+
+            const originPt = origin?.coordinates;
+            const destPt = destination?.coordinates;
+
+            if (
+              originPt &&
+              segPaths2.length > 0 &&
+              !isWalkType(route.segments[firstIdx]?.transportType) &&
+              Array.isArray(segPaths2[firstIdx]) &&
+              segPaths2[firstIdx].length >= 2
+            ) {
+              const startPt = segPaths2[firstIdx][0];
+              const d0 = haversineM(originPt, startPt);
+              if (d0 > 25 && d0 <= 1200) {
+                allConnectors.push([originPt, startPt]);
+              }
+            }
+
+            if (
+              destPt &&
+              segPaths2.length > 0 &&
+              !isWalkType(route.segments[lastIdx]?.transportType) &&
+              Array.isArray(segPaths2[lastIdx]) &&
+              segPaths2[lastIdx].length >= 6
+            ) {
+              const path = segPaths2[lastIdx];
+              const searchUpto = Math.max(0, path.length - 3);
+              let bestIdx = -1;
+              let bestM = Number.POSITIVE_INFINITY;
+              for (let k = 0; k < searchUpto; k++) {
+                const d = haversineM(path[k], destPt);
+                if (d < bestM) {
+                  bestM = d;
+                  bestIdx = k;
+                }
+              }
+
+              if (bestIdx >= 0 && bestM <= 80) {
+                const tailM = polylineLenM(path.slice(bestIdx));
+                const directM = haversineM(path[bestIdx], destPt);
+                const isShortHop = directM <= 160;
+                const isDetour = tailM > Math.max(220, directM * 3.0);
+                if (isShortHop && isDetour) {
+                  segPaths2[lastIdx] = path.slice(0, bestIdx + 1);
+                  allConnectors.push([path[bestIdx], destPt]);
+                }
+              } else if (Array.isArray(segPaths2[lastIdx]) && segPaths2[lastIdx].length >= 2) {
+                const endPt = segPaths2[lastIdx][segPaths2[lastIdx].length - 1];
+                const d1 = haversineM(endPt, destPt);
+                if (d1 > 25 && d1 <= 1200) {
+                  allConnectors.push([endPt, destPt]);
+                }
+              }
+            }
+          } catch {
+            // best-effort only
+          }
 
           return (
-            <React.Fragment key={segment.id}>
-              <Polyline
-                coordinates={pathCoordinates}
-                strokeColor={isWalk ? '#7f8c8d' : getTransportColor(segment.transportType)}
-                strokeWidth={isWalk ? 4 : 5}
-                lineDashPattern={isWalk ? [2, 10] : undefined}
-                geodesic={false}
-                zIndex={5}
-                lineCap="round"
-                lineJoin="round"
-              />
-            </React.Fragment>
+            <>
+              {segPaths2.map((pathCoordinates, index) => {
+                const segment = route.segments[index];
+                const isWalk = isWalkType(segment.transportType);
+
+                console.log(`[MapView] Rendering segment ${index}:`, {
+                  id: segment.id,
+                  hasGeometry: !!segment.geometry,
+                  geometryLength: segment.geometry?.length || 0,
+                  pathLength: pathCoordinates.length,
+                  firstCoord: pathCoordinates[0],
+                  lastCoord: pathCoordinates[pathCoordinates.length - 1]
+                });
+
+                if (!Array.isArray(pathCoordinates) || pathCoordinates.length < 2) return null;
+
+                return (
+                  <React.Fragment key={`${route.id}-${segment.id}-${index}`}>
+                    <Polyline
+                      coordinates={pathCoordinates}
+                      strokeColor={isWalk ? '#7f8c8d' : getTransportColor(segment.transportType)}
+                      strokeWidth={isWalk ? 4 : 5}
+                      lineDashPattern={isWalk ? [2, 10] : undefined}
+                      geodesic={false}
+                      zIndex={5}
+                      lineCap="round"
+                      lineJoin="round"
+                    />
+                  </React.Fragment>
+                );
+              })}
+
+              {allConnectors.map((conn, idx) => {
+                if (!Array.isArray(conn) || conn.length < 2) return null;
+                return (
+                  <Polyline
+                    key={`transfer-connector-${idx}`}
+                    coordinates={conn}
+                    strokeColor={'#7f8c8d'}
+                    strokeWidth={4}
+                    lineDashPattern={[2, 10]}
+                    geodesic={false}
+                    zIndex={6}
+                    lineCap="round"
+                    lineJoin="round"
+                  />
+                );
+              })}
+            </>
           );
-        })}
+        })()}
 
         {/* Segment start/end badges (mode icons) */}
         {route && getSegmentEndpointMarkers().map((m) => (
@@ -749,7 +1021,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
             tracksViewChanges={false}
             zIndex={7}
           >
-            <View style={[styles.segmentEndpointBadge, { backgroundColor: getTransportColor(m.modeType) }]}>
+            <View style={[styles.segmentEndpointBadge, { backgroundColor: getTransportColorSafe(m.modeType) }]}>
               <Ionicons name={getModeIconName(m.modeType) as any} size={13} color="#fff" />
             </View>
           </Marker>
