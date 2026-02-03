@@ -591,20 +591,47 @@ export const searchStops = async (query: string): Promise<Location[]> => {
 /**
  * Search POIs by name (for private vehicle autocomplete)
  */
-export const searchPois = async (query: string, limit: number = 10): Promise<Location[]> => {
+export const searchPois = async (
+  query: string,
+  limit: number = 10,
+  near?: { latitude: number; longitude: number } | null
+): Promise<Location[]> => {
   try {
+    const nearParams = near && typeof near.latitude === 'number' && typeof near.longitude === 'number'
+      ? `&near_lat=${encodeURIComponent(String(near.latitude))}&near_lon=${encodeURIComponent(String(near.longitude))}`
+      : '';
+
     const response = await apiClient.get(
-      `/private-vehicle/poi/search?q=${encodeURIComponent(query)}&limit=${encodeURIComponent(String(limit))}`
+      `/private-vehicle/poi/search?q=${encodeURIComponent(query)}&limit=${encodeURIComponent(String(limit))}${nearParams}`
     );
 
     const results = Array.isArray(response.data?.results) ? response.data.results : [];
-    return results
+    const mapped: Location[] = results
       .filter((p: any) => p && typeof p.lat === 'number' && typeof p.lon === 'number')
       .map((p: any) => ({
-        name: String(p.name || query),
+        name: String(p.title || p.name || query),
         coordinates: { latitude: Number(p.lat), longitude: Number(p.lon) },
-        address: p.category ? String(p.category) : undefined
+        address: (() => {
+          const subtitle = typeof p.subtitle === 'string' && p.subtitle.trim().length > 0
+            ? p.subtitle.trim()
+            : (p.category ? String(p.category) : '');
+
+          if (typeof p.distance_m === 'number') {
+            const dist = `${(Number(p.distance_m) / 1000).toFixed(1)} km`;
+            return subtitle ? `${dist} • ${subtitle}` : dist;
+          }
+
+          return subtitle || `${Number(p.lat).toFixed(5)}, ${Number(p.lon).toFixed(5)}`;
+        })()
       }));
+
+    // Hide generic brand-only entries if we have richer branch-like titles.
+    const q0 = String(query || '').trim().toLowerCase();
+    const hasSpecific = mapped.some((m: Location) => m.name.toLowerCase() !== q0 && m.name.toLowerCase().includes(q0));
+    if (hasSpecific) {
+      return mapped.filter((m: Location) => m.name.trim().toLowerCase() !== q0);
+    }
+    return mapped;
   } catch (error) {
     console.error('Error searching POIs:', error);
     return [];

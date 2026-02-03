@@ -15,7 +15,7 @@ type PrivateVehicleNavigationProp = StackNavigationProp<RootStackParamList, 'Pri
 
 const PrivateVehicleScreen: React.FC = () => {
   const navigation = useNavigation<PrivateVehicleNavigationProp>();
-  const { selectedOrigin, selectedDestination, setSelectedOrigin, setSelectedDestination } = useLocation();
+  const { currentLocation, selectedOrigin, selectedDestination, setSelectedOrigin, setSelectedDestination } = useLocation();
   const { setIsLoading } = useApp();
   
   const [vehicle, setVehicle] = useState<Vehicle>({
@@ -96,14 +96,14 @@ const PrivateVehicleScreen: React.FC = () => {
           value={selectedOrigin}
           onValueChange={setSelectedOrigin}
           placeholder="Starting point"
-          searchProvider={(q) => searchPois(q, 10)}
+          searchProvider={(q) => searchPois(q, 10, currentLocation)}
         />
         <DestinationInput
           label="Destination"
           value={selectedDestination}
           onValueChange={setSelectedDestination}
           placeholder="Final destination"
-          searchProvider={(q) => searchPois(q, 10)}
+          searchProvider={(q) => searchPois(q, 10, currentLocation)}
         />
         
         <TouchableOpacity
