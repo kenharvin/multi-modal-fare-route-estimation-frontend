@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert, Animated, Dimensions } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
@@ -23,6 +23,38 @@ const RouteResultsScreen: React.FC = () => {
   const hasFetchedRef = useRef<boolean>(false);
   const [isGeometryLoading, setIsGeometryLoading] = useState<boolean>(false);
   const [geometryFetchedIds, setGeometryFetchedIds] = useState<Set<string>>(new Set());
+
+  const sheetProgress = useRef(new Animated.Value(0)).current; // 0=collapsed, 1=expanded
+  const isExpandedRef = useRef<boolean>(false);
+  const winH = Dimensions.get('window').height;
+  const sheetCollapsedH = Math.max(360, Math.round(winH * 0.55));
+  const sheetExpandedH = Math.max(560, Math.round(winH * 0.92));
+  const sheetHeight = sheetProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [sheetCollapsedH, sheetExpandedH]
+  });
+
+  const expandSheet = () => {
+    if (isExpandedRef.current) return;
+    isExpandedRef.current = true;
+    Animated.spring(sheetProgress, {
+      toValue: 1,
+      useNativeDriver: false,
+      speed: 18,
+      bounciness: 0
+    }).start();
+  };
+
+  const collapseSheet = () => {
+    if (!isExpandedRef.current) return;
+    isExpandedRef.current = false;
+    Animated.spring(sheetProgress, {
+      toValue: 0,
+      useNativeDriver: false,
+      speed: 18,
+      bounciness: 0
+    }).start();
+  };
 
   useEffect(() => {
     // Guard against duplicate fetches caused by re-mounts or fast refresh
@@ -127,9 +159,9 @@ const RouteResultsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Map showing the selected route */}
-      <View style={styles.mapContainer}>
-        <MapViewComponent 
+      {/* Map as full-screen background */}
+      <View style={StyleSheet.absoluteFillObject}>
+        <MapViewComponent
           origin={origin}
           destination={destination}
           route={selectedRoute}
@@ -142,48 +174,70 @@ const RouteResultsScreen: React.FC = () => {
         )}
       </View>
 
-      <ScrollView style={styles.routesList}>
-        {routes.map((route, index) => (
-          <RouteCard
-            key={route.id}
-            route={route}
-            isSelected={selectedRoute?.id === route.id}
-            rank={index + 1}
-            onSelect={() => handleSelectRoute(route)}
-          />
-        ))}
-      </ScrollView>
-
-      {selectedRoute && (
-        <View style={styles.footer}>
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryItem}>
-              <Text>$</Text>
-              <Text style={styles.summaryValue}>₱{selectedRoute.totalFare.toFixed(2)}</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text>T</Text>
-              <Text style={styles.summaryValue}>{selectedRoute.totalTime} min</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text>↔</Text>
-              <Text style={styles.summaryValue}>
-                {selectedRoute.totalTransfers === 0
-                  ? 'No transfers'
-                  : `${selectedRoute.totalTransfers} transfer${selectedRoute.totalTransfers === 1 ? '' : 's'}`}
-              </Text>
-            </View>
-          </View>
-          <Button
-            mode="contained"
-            onPress={handleAddDestination}
-            style={styles.continueButton}
-            icon="plus"
-          >
-            Add Another Destination
-          </Button>
+      {/* Bottom sheet: expands as user scrolls */}
+      <Animated.View style={[styles.sheet, { height: sheetHeight }]}>
+        <View style={styles.sheetHandleWrap}>
+          <View style={styles.sheetHandle} />
         </View>
-      )}
+
+        <Animated.ScrollView
+          style={styles.routesList}
+          contentContainerStyle={styles.routesListContent}
+          showsVerticalScrollIndicator={false}
+          overScrollMode="never"
+          scrollEventThrottle={16}
+          onScrollBeginDrag={expandSheet}
+          onMomentumScrollEnd={(e) => {
+            const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+            if (y <= 0) collapseSheet();
+          }}
+          onScrollEndDrag={(e) => {
+            const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+            if (y <= 0) collapseSheet();
+          }}
+        >
+          {routes.map((r, index) => (
+            <RouteCard
+              key={r.id}
+              route={r}
+              isSelected={selectedRoute?.id === r.id}
+              rank={index + 1}
+              onSelect={() => handleSelectRoute(r)}
+            />
+          ))}
+        </Animated.ScrollView>
+
+        {selectedRoute && (
+          <View style={styles.footer}>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryItem}>
+                <Text>$</Text>
+                <Text style={styles.summaryValue}>₱{selectedRoute.totalFare.toFixed(2)}</Text>
+              </View>
+              <View style={styles.summaryItem}>
+                <Text>T</Text>
+                <Text style={styles.summaryValue}>{selectedRoute.totalTime} min</Text>
+              </View>
+              <View style={styles.summaryItem}>
+                <Text>↔</Text>
+                <Text style={styles.summaryValue}>
+                  {selectedRoute.totalTransfers === 0
+                    ? 'No transfers'
+                    : `${selectedRoute.totalTransfers} transfer${selectedRoute.totalTransfers === 1 ? '' : 's'}`}
+                </Text>
+              </View>
+            </View>
+            <Button
+              mode="contained"
+              onPress={handleAddDestination}
+              style={styles.continueButton}
+              icon="plus"
+            >
+              Add Another Destination
+            </Button>
+          </View>
+        )}
+      </Animated.View>
     </View>
   );
 };
@@ -230,11 +284,6 @@ const styles = StyleSheet.create({
   retryButton: {
     borderRadius: 8
   },
-  mapContainer: {
-    height: 300,
-    width: '100%',
-    backgroundColor: '#e8f4f8'
-  },
   mapOverlay: {
     position: 'absolute',
     right: 12,
@@ -251,9 +300,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#2c3e50'
   },
+  sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 8
+  },
+  sheetHandleWrap: {
+    paddingTop: 10,
+    paddingBottom: 6,
+    alignItems: 'center'
+  },
+  sheetHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#d0d7de'
+  },
   routesList: {
-    flex: 1,
-    padding: 16
+    flex: 1
+  },
+  routesListContent: {
+    padding: 16,
+    paddingBottom: 8
   },
   footer: {
     backgroundColor: '#fff',

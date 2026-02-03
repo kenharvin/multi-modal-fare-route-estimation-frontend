@@ -19,57 +19,143 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
     return `${hh}:${mm}`;
   };
 
-  const modeLabel = (t: TransportType) => {
-    switch (t) {
-      case TransportType.WALK:
-        return 'Walk';
-      case TransportType.TRAIN:
-        return 'Train';
-      case TransportType.BUS:
-        return 'Bus';
-      case TransportType.JEEPNEY:
-        return 'Jeepney';
-      case TransportType.UV_EXPRESS:
-        return 'UV Express';
-      default:
-        return 'Transit';
-    }
+  const titleCaseWord = (w: string) => {
+    if (!w) return w;
+    // Keep short acronyms (e.g., MRT, LRT, PNR, EDSA)
+    if (w.length <= 4 && w.toUpperCase() === w) return w;
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
   };
 
-  const steps = (() => {
+  const cleanRouteName = (raw: string | undefined | null): string | null => {
+    const name = String(raw || '').trim();
+    if (!name) return null;
+
+    // Hide backend/internal identifiers
+    const hiddenPrefixes = ['LTFRB', 'ROUTE', 'TRIP', 'SHAPE', 'GTFS'];
+    const hiddenRe = new RegExp(`^(${hiddenPrefixes.join('|')})[_:-]?[A-Z0-9]+$`, 'i');
+    if (hiddenRe.test(name)) return null;
+
+    // If it looks like an internal numeric route code
+    if (/^route[_:-]?\d+$/i.test(name)) return null;
+
+    // Humanize ALL_CAPS_WITH_UNDERSCORES (e.g., EDSA_CAROUSEL -> EDSA Carousel)
+    if (/^[A-Z0-9]+(?:_[A-Z0-9]+)+$/.test(name)) {
+      const words = name.split('_').filter(Boolean);
+      const human = words.map(titleCaseWord).join(' ').replace(/\s+/g, ' ').trim();
+      return human || null;
+    }
+
+    return name;
+  };
+
+  const cleanServiceLabel = (seg: any): string => {
+    const t: TransportType = seg?.transportType;
+    const mode = String(seg?.mode || '').toLowerCase();
+    if (t === TransportType.TRAIN) {
+      if (mode.includes('mrt')) return 'MRT';
+      if (mode.includes('lrt')) return 'LRT';
+      if (mode.includes('pnr')) return 'PNR';
+      return 'Train';
+    }
+    const transportStyle = getTransportStyle(t);
+    return transportStyle.label || 'Transit';
+  };
+
+  const stepRows = (() => {
     const s = route.segments || [];
-    if (s.length === 0) return [] as string[];
-    const out: string[] = [];
+    if (s.length === 0) return [] as { key: string; type: 'start' | 'segment'; icon: string; color: string; title: string; subtitle?: string; metaRight?: string }[];
+
+    const rows: { key: string; type: 'start' | 'segment'; icon: string; color: string; title: string; subtitle?: string; metaRight?: string }[] = [];
+
+    // Start row
+    const startName = s[0]?.origin?.name || 'Your location';
+    rows.push({
+      key: 'start',
+      type: 'start',
+      icon: '●',
+      color: '#1a73e8',
+      title: startName
+    });
+
     let lastNonWalkKey: string | null = null;
     let sawWalkSinceLastNonWalk = false;
+    let pendingTransferAt: string | null = null;
 
     for (let i = 0; i < s.length; i++) {
       const seg = s[i];
+      const transportStyle = getTransportStyle(seg.transportType);
       const isWalk = seg.transportType === TransportType.WALK;
-      const label = modeLabel(seg.transportType);
       const routeName = (seg.routeName || '').trim();
-      const key = isWalk ? null : `${seg.transportType}:${routeName}`;
+      const nonWalkKey = isWalk ? null : `${seg.transportType}:${routeName}`;
 
       if (isWalk) {
         if (lastNonWalkKey) sawWalkSinceLastNonWalk = true;
       }
 
-      if (!isWalk && lastNonWalkKey && key && (key !== lastNonWalkKey || sawWalkSinceLastNonWalk)) {
+      if (!isWalk && lastNonWalkKey && nonWalkKey && (nonWalkKey !== lastNonWalkKey || sawWalkSinceLastNonWalk)) {
         const transferAt = s[i - 1]?.destination?.name || 'transfer point';
-        out.push(`Transfer at ${transferAt}`);
+        pendingTransferAt = transferAt;
       }
 
+      const time = Number(seg.estimatedTime) || 0;
+      const fare = Number(seg.fare) || 0;
+      const distKm = Number(seg.distance) || 0;
+
+      const metaParts: string[] = [];
+      if (time > 0) metaParts.push(`${time} min`);
+      if (!isWalk && fare > 0) metaParts.push(`₱${fare.toFixed(0)}`);
+      const metaRight = metaParts.join(' • ');
+
       if (isWalk) {
-        out.push(`Walk to ${seg.destination?.name || 'next stop'} (~${seg.estimatedTime} min)`);
+        const destName = seg.destination?.name || 'next stop';
+        const subtitleParts: string[] = [];
+        if (distKm > 0) subtitleParts.push(`${distKm.toFixed(distKm < 1 ? 2 : 1)} km`);
+        rows.push({
+          key: seg.id || `seg-${i}`,
+          type: 'segment',
+          icon: transportStyle.icon,
+          color: transportStyle.color,
+          title: `Walk to ${destName}`,
+          subtitle: subtitleParts.length ? subtitleParts.join('\n') : undefined,
+          metaRight
+        });
       } else {
-        const rideName = routeName ? `${label} (${routeName})` : label;
-        out.push(`Take ${rideName}: ${seg.origin?.name || 'origin'} → ${seg.destination?.name || 'destination'} (~${seg.estimatedTime} min, ₱${(seg.fare || 0).toFixed(0)})`);
-        lastNonWalkKey = key;
+        const serviceLabel = cleanServiceLabel(seg);
+        const routeLabel = cleanRouteName(routeName);
+        const subtitleParts: string[] = [];
+        if (pendingTransferAt) subtitleParts.push(`Transfer at ${pendingTransferAt}`);
+        if (routeLabel) subtitleParts.push(routeLabel);
+        if (seg.origin?.name && seg.destination?.name) subtitleParts.push(`${seg.origin.name} → ${seg.destination.name}`);
+        if (distKm > 0) subtitleParts.push(`Distance: ${distKm.toFixed(distKm < 1 ? 2 : 1)} km`);
+        rows.push({
+          key: seg.id || `seg-${i}`,
+          type: 'segment',
+          icon: transportStyle.icon,
+          color: transportStyle.color,
+          title: `Take ${serviceLabel}`,
+          subtitle: subtitleParts.length ? subtitleParts.join('\n') : undefined,
+          metaRight
+        });
+
+        lastNonWalkKey = nonWalkKey;
         sawWalkSinceLastNonWalk = false;
+        pendingTransferAt = null;
       }
     }
 
-    return out;
+    // End row
+    const endName = s[s.length - 1]?.destination?.name;
+    if (endName) {
+      rows.push({
+        key: 'end',
+        type: 'start',
+        icon: '●',
+        color: '#d93025',
+        title: endName
+      });
+    }
+
+    return rows;
   })();
 
   const content = (
@@ -96,9 +182,6 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
                 <View style={[styles.transportBadge, { backgroundColor: transportStyle.color }]}>
                   <Text style={styles.transportIcon}>{transportStyle.icon}</Text>
                 </View>
-                {index < route.segments.length - 1 && (
-                  <Text style={styles.arrowIcon}>→</Text>
-                )}
               </View>
             );
           })}
@@ -147,32 +230,41 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
 
       {isSelected && (
         <View style={styles.segmentsSection}>
-          <Text style={styles.stepsTitle}>How to go</Text>
-          {steps.slice(0, 6).map((t, i) => (
-            <Text key={`step-${i}`} style={styles.stepText}>
-              {i + 1}. {t}
-            </Text>
-          ))}
+          <Text style={styles.stepsTitle}>Steps</Text>
+          <View style={styles.stepsList}>
+            <View pointerEvents="none" style={styles.stepsRail} />
+            {stepRows.map((row) => {
+              return (
+                <View key={row.key} style={styles.stepRow}>
+                  <View style={styles.stepLeft}>
+                    <View style={[styles.stepDot, { borderColor: row.color }]}>
+                      <View style={[styles.stepDotInner, { backgroundColor: row.color }]}>
+                        <Text style={styles.stepDotIcon}>{row.icon}</Text>
+                      </View>
+                    </View>
+                  </View>
 
-          <View style={styles.stepsDivider} />
-
-          {route.segments.map((segment) => {
-            const transportStyle = getTransportStyle(segment.transportType);
-            return (
-              <View key={segment.id} style={styles.segment}>
-                <View style={[styles.segmentColorBar, { backgroundColor: transportStyle.color }]} />
-                <View style={[styles.segmentBadge, { backgroundColor: transportStyle.color }]}>
-                  <Text style={styles.segmentIcon}>{transportStyle.icon}</Text>
+                  <View style={styles.stepMain}>
+                    <View style={styles.stepTopRow}>
+                      <Text style={styles.stepTitle} numberOfLines={4}>
+                        {row.title}
+                      </Text>
+                      {!!row.metaRight && (
+                        <Text style={styles.stepMeta} numberOfLines={1}>
+                          {row.metaRight}
+                        </Text>
+                      )}
+                    </View>
+                    {!!row.subtitle && (
+                      <Text style={styles.stepSubtitle} numberOfLines={6}>
+                        {row.subtitle}
+                      </Text>
+                    )}
+                  </View>
                 </View>
-                <View style={styles.segmentContent}>
-                  <Text style={styles.segmentTitle}>{segment.routeName}</Text>
-                  <Text style={styles.segmentText}>
-                    {segment.origin.name} → {segment.destination.name}
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
+              );
+            })}
+          </View>
         </View>
       )}
     </View>
@@ -242,8 +334,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-    marginTop: 24,
+    marginBottom: 10,
+    marginTop: 14,
     flexWrap: 'wrap'
   },
   tapHintText: {
@@ -268,11 +360,6 @@ const styles = StyleSheet.create({
   },
   transportIcon: {
     fontSize: 24
-  },
-  arrowIcon: {
-    fontSize: 20,
-    color: '#95a5a6',
-    marginHorizontal: 4
   },
   infoRow: {
     flexDirection: 'row',
@@ -302,13 +389,84 @@ const styles = StyleSheet.create({
   segmentsSection: {
     borderTopWidth: 1,
     borderTopColor: '#ecf0f1',
-    paddingTop: 12
+    paddingTop: 14
   },
   stepsTitle: {
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: '700',
     color: '#2c3e50',
-    marginBottom: 6
+    marginBottom: 10
+  },
+  stepsList: {
+    marginBottom: 8,
+    position: 'relative'
+  },
+  stepsRail: {
+    position: 'absolute',
+    left: 24,
+    top: 10,
+    bottom: 10,
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: '#1a73e8',
+    opacity: 0.35
+  },
+  stepRow: {
+    flexDirection: 'row',
+    paddingVertical: 12
+  },
+  stepLeft: {
+    width: 50,
+    alignItems: 'center'
+  },
+  stepDot: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#ffffff',
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  stepDotInner: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  stepDotIcon: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '700'
+  },
+  stepMain: {
+    flex: 1,
+    paddingRight: 4
+  },
+  stepTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10
+  },
+  stepTitle: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '600',
+    color: '#2c3e50'
+  },
+  stepMeta: {
+    fontSize: 13,
+    color: '#34495e',
+    fontWeight: '600'
+  },
+  stepSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#7f8c8d'
   },
   stepText: {
     fontSize: 11,
