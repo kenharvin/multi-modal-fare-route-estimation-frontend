@@ -1,21 +1,27 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { Stopover, StopoverType, Location } from '@/types';
-import { Button, TextInput } from 'react-native-paper';
+import { Button } from 'react-native-paper';
+import DestinationInput from '@components/DestinationInput';
 interface StopoverInputProps {
   stopovers: Stopover[];
   onAddStopover: (stopover: Stopover) => void;
   onRemoveStopover: (id: string) => void;
+  searchProvider?: (query: string) => Promise<Location[]>;
+  onPickFromMap?: (type: StopoverType) => void;
 }
 
 const StopoverInput: React.FC<StopoverInputProps> = ({
   stopovers,
   onAddStopover,
-  onRemoveStopover
+  onRemoveStopover,
+  searchProvider,
+  onPickFromMap
 }) => {
-  const [showForm, setShowForm] = useState<boolean>(false);
-  const [locationName, setLocationName] = useState<string>('');
+  const [isAdding, setIsAdding] = useState<boolean>(false);
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [selectedType, setSelectedType] = useState<StopoverType>(StopoverType.GAS);
+  const [draftKey, setDraftKey] = useState<number>(0);
 
   const stopoverTypes = [
     { value: StopoverType.GAS, label: 'Gas Station', icon: 'gas-station' },
@@ -24,43 +30,44 @@ const StopoverInput: React.FC<StopoverInputProps> = ({
     { value: StopoverType.OTHER, label: 'Other', icon: 'map-marker' }
   ];
 
-  const handleAddStopover = () => {
-    if (!locationName.trim()) {
-      Alert.alert('Missing Information', 'Please enter a location name');
+  const canAddMore = stopovers.length < 3;
+  const canConfirm = useMemo(() => {
+    if (!selectedLocation) return false;
+    const lat = selectedLocation?.coordinates?.latitude;
+    const lon = selectedLocation?.coordinates?.longitude;
+    return typeof lat === 'number' && typeof lon === 'number' && !(lat === 0 && lon === 0);
+  }, [selectedLocation]);
+
+  const handleConfirmAdd = () => {
+    if (!selectedLocation) {
+      Alert.alert('Missing Information', 'Please select a stopover location');
+      return;
+    }
+
+    if (!canConfirm) {
+      Alert.alert('Missing Coordinates', 'Please pick a suggested location (with coordinates)');
       return;
     }
 
     const newStopover: Stopover = {
       id: Date.now().toString(),
-      location: {
-        name: locationName,
-        coordinates: { latitude: 0, longitude: 0 } // Will be filled by map selection or geocoding
-      },
+      location: selectedLocation,
       type: selectedType
     };
 
     onAddStopover(newStopover);
-    setLocationName('');
+    setSelectedLocation(null);
     setSelectedType(StopoverType.GAS);
-    setShowForm(false);
+    setIsAdding(false);
+    setDraftKey((k) => k + 1);
   };
 
-  const getStopoverIcon = (type: StopoverType): string => {
-    const typeObj = stopoverTypes.find(t => t.value === type);
-    return typeObj?.icon || 'map-marker';
-  };
-
-  const getStopoverColor = (type: StopoverType): string => {
-    switch (type) {
-      case StopoverType.GAS:
-        return '#e74c3c';
-      case StopoverType.FOOD:
-        return '#f39c12';
-      case StopoverType.REST:
-        return '#9b59b6';
-      default:
-        return '#3498db';
-    }
+  const handleCancel = () => {
+    setSelectedLocation(null);
+    setSelectedType(StopoverType.GAS);
+    setIsAdding(false);
+    // Remount DestinationInput to clear its internal searchText state.
+    setDraftKey((k) => k + 1);
   };
 
   return (
@@ -87,25 +94,25 @@ const StopoverInput: React.FC<StopoverInputProps> = ({
         </View>
       )}
 
-      {!showForm ? (
+      {!isAdding ? (
         <Button
           mode="outlined"
-          onPress={() => setShowForm(true)}
+          onPress={() => setIsAdding(true)}
           style={styles.addButton}
           icon="plus"
-          disabled={stopovers.length >= 5}
+          disabled={!canAddMore}
         >
           Add Stopover
         </Button>
       ) : (
         <View style={styles.form}>
-          <TextInput
-            label="Location Name"
-            value={locationName}
-            onChangeText={setLocationName}
-            mode="outlined"
-            style={styles.input}
-            placeholder="Enter stopover location"
+          <DestinationInput
+            key={`stopover-draft-${draftKey}`}
+            label="Stopover"
+            value={selectedLocation}
+            onValueChange={setSelectedLocation}
+            placeholder="Search stopover"
+            searchProvider={searchProvider}
           />
 
           <Text style={styles.typeLabel}>Stopover Type</Text>
@@ -113,43 +120,49 @@ const StopoverInput: React.FC<StopoverInputProps> = ({
             {stopoverTypes.map((type) => (
               <TouchableOpacity
                 key={type.value}
-                style={[
-                  styles.typeCard,
-                  selectedType === type.value && styles.typeCardActive
-                ]}
+                style={[styles.typeCard, selectedType === type.value && styles.typeCardActive]}
                 onPress={() => setSelectedType(type.value)}
               >
-                <Text style={{fontSize: 28, color: selectedType === type.value ? '#2196f3' : '#7f8c8d'}}>
+                <Text style={{ fontSize: 28, color: selectedType === type.value ? '#2196f3' : '#7f8c8d' }}>
                   {type.label.charAt(0)}
                 </Text>
-                <Text
-                  style={[
-                    styles.typeLabel,
-                    selectedType === type.value && styles.typeLabelActive
-                  ]}
-                >
+                <Text style={[styles.typeLabel, selectedType === type.value && styles.typeLabelActive]}>
                   {type.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
+          {typeof onPickFromMap === 'function' && (
+            <Button
+              mode="outlined"
+              icon="map"
+              onPress={() => {
+                try {
+                  onPickFromMap(selectedType);
+                } finally {
+                  handleCancel();
+                }
+              }}
+              style={styles.mapPickButton}
+            >
+              Pick from Map
+            </Button>
+          )}
+
           <View style={styles.buttonRow}>
             <Button
               mode="outlined"
-              onPress={() => {
-                setShowForm(false);
-                setLocationName('');
-                setSelectedType(StopoverType.GAS);
-              }}
+              onPress={handleCancel}
               style={[styles.button, styles.cancelButton]}
             >
               Cancel
             </Button>
             <Button
               mode="contained"
-              onPress={handleAddStopover}
+              onPress={handleConfirmAdd}
               style={[styles.button, styles.confirmButton]}
+              disabled={!canConfirm}
             >
               Add
             </Button>
@@ -208,10 +221,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ecf0f1'
   },
-  input: {
-    marginBottom: 16,
-    backgroundColor: '#fff'
-  },
   typeLabel: {
     fontSize: 14,
     fontWeight: '600',
@@ -244,6 +253,11 @@ const styles = StyleSheet.create({
   buttonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between'
+  },
+  mapPickButton: {
+    borderRadius: 8,
+    borderColor: '#2980b9',
+    marginBottom: 12
   },
   button: {
     flex: 1,

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'rea
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
-import { Vehicle, VehicleCategory, Stopover, Location, DrivingPreferences } from '@/types';
+import { Vehicle, VehicleCategory, Stopover, StopoverType, Location, DrivingPreferences } from '@/types';
 import { useLocation } from '@context/LocationContext';
 import { useApp } from '@context/AppContext';
 import DestinationInput from '@components/DestinationInput';
@@ -25,11 +25,16 @@ const PrivateVehicleScreen: React.FC = () => {
   const [fuelPrice, setFuelPrice] = useState<string>('60');
   const [stopovers, setStopovers] = useState<Stopover[]>([]);
   const [showMap, setShowMap] = useState<boolean>(false);
+  const [stopoverPickActive, setStopoverPickActive] = useState<boolean>(false);
+  const [pendingStopoverType, setPendingStopoverType] = useState<StopoverType>(StopoverType.OTHER);
+  const [mapOpenedForStopoverPick, setMapOpenedForStopoverPick] = useState<boolean>(false);
   const [preferences, setPreferences] = useState<DrivingPreferences>({
     avoidTolls: false,
     avoidHighways: false,
     preferShortest: true
   });
+
+  const MAX_STOPOVERS = 3;
 
   const vehicleCategories = [
     { value: VehicleCategory.SEDAN, label: 'Sedan', icon: 'car-side', efficiency: 12 },
@@ -49,11 +54,50 @@ const PrivateVehicleScreen: React.FC = () => {
   };
 
   const handleAddStopover = (stopover: Stopover) => {
-    if (stopovers.length < 5) {
+    if (stopovers.length < MAX_STOPOVERS) {
       setStopovers([...stopovers, stopover]);
     } else {
-      Alert.alert('Maximum Stopovers', 'You can add up to 5 stopovers');
+      Alert.alert('Maximum Stopovers', `You can add up to ${MAX_STOPOVERS} stopovers`);
     }
+  };
+
+  const handleRequestStopoverPickFromMap = (type: StopoverType) => {
+    if (stopovers.length >= MAX_STOPOVERS) {
+      Alert.alert('Maximum Stopovers', `You can add up to ${MAX_STOPOVERS} stopovers`);
+      return;
+    }
+    setPendingStopoverType(type);
+    setStopoverPickActive(true);
+    setMapOpenedForStopoverPick(true);
+    setShowMap(true);
+  };
+
+  const handleStopoverSelectedFromMap = (location: Location) => {
+    const newStopover: Stopover = {
+      id: Date.now().toString(),
+      location,
+      type: pendingStopoverType
+    };
+    handleAddStopover(newStopover);
+    setStopoverPickActive(false);
+
+    // If the map was opened specifically for stopover picking, close it after selection.
+    if (mapOpenedForStopoverPick) {
+      setShowMap(false);
+    }
+    setMapOpenedForStopoverPick(false);
+  };
+
+  const handleToggleMap = () => {
+    setShowMap((prev) => {
+      const next = !prev;
+      // If user manually hides the map while armed for stopover selection, cancel that mode.
+      if (!next && stopoverPickActive) {
+        setStopoverPickActive(false);
+        setMapOpenedForStopoverPick(false);
+      }
+      return next;
+    });
   };
 
   const handleRemoveStopover = (id: string) => {
@@ -108,7 +152,7 @@ const PrivateVehicleScreen: React.FC = () => {
         
         <TouchableOpacity
           style={styles.mapButton}
-          onPress={() => setShowMap(!showMap)}
+          onPress={handleToggleMap}
         >
           <Text>*</Text>
           <Text style={styles.mapButtonText}>
@@ -124,6 +168,8 @@ const PrivateVehicleScreen: React.FC = () => {
               onOriginSelect={setSelectedOrigin}
               onDestinationSelect={setSelectedDestination}
               stopovers={stopovers}
+              onStopoverSelect={handleStopoverSelectedFromMap}
+              autoSelectMode={stopoverPickActive ? 'stopover' : null}
             />
           </View>
         )}
@@ -176,12 +222,14 @@ const PrivateVehicleScreen: React.FC = () => {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Stopovers (Optional)</Text>
-        <Text style={styles.sectionSubtitle}>Add up to 5 stopovers</Text>
+        <Text style={styles.sectionSubtitle}>Add up to {MAX_STOPOVERS} stopovers</Text>
         
         <StopoverInput
           stopovers={stopovers}
           onAddStopover={handleAddStopover}
           onRemoveStopover={handleRemoveStopover}
+          searchProvider={(q) => searchPois(q, 10, currentLocation)}
+          onPickFromMap={handleRequestStopoverPickFromMap}
         />
       </View>
 

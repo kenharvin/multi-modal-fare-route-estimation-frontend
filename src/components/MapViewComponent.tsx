@@ -53,10 +53,23 @@ interface MapViewComponentProps {
    * Coordinates are in RN Maps order: { latitude, longitude }.
    */
   polylineCoords?: { latitude: number; longitude: number }[] | null;
+  /**
+   * Optional multi-polyline rendering (e.g. per-leg private vehicle geometry).
+   * When provided, this takes precedence over `polylineCoords`.
+   */
+  polylines?: {
+    coords: { latitude: number; longitude: number }[];
+    color?: string;
+    width?: number;
+    dashed?: boolean;
+  }[] | null;
   polylineColor?: string;
   polylineWidth?: number;
   onOriginSelect?: (location: Location) => void;
   onDestinationSelect?: (location: Location) => void;
+  onStopoverSelect?: (location: Location) => void;
+  /** If set, the next map tap selects that target without needing to tap the in-map control button. */
+  autoSelectMode?: 'origin' | 'destination' | 'stopover' | null;
   showRoute?: boolean;
   /**
    * Shows small markers at segment boundaries (transfer points).
@@ -71,10 +84,13 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   stopovers = [],
   route,
   polylineCoords = null,
+  polylines = null,
   polylineColor = '#3498db',
   polylineWidth = 5,
   onOriginSelect,
   onDestinationSelect,
+  onStopoverSelect,
+  autoSelectMode = null,
   showRoute = false,
   showTransferMarkers = true
 }) => {
@@ -87,9 +103,32 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
 
   const [selectingOrigin, setSelectingOrigin] = useState<boolean>(false);
   const [selectingDestination, setSelectingDestination] = useState<boolean>(false);
+  const [selectingStopover, setSelectingStopover] = useState<boolean>(false);
   const [previewCoords, setPreviewCoords] = useState<{ latitude: number; longitude: number }[] | null>(null);
   const [previewSource, setPreviewSource] = useState<string | null>(null);
   const [legendVisible, setLegendVisible] = useState<boolean>(false);
+
+  // Allow parent to programmatically arm a selection mode (e.g., pick stopover from map).
+  useEffect(() => {
+    if (!autoSelectMode) return;
+    if (autoSelectMode === 'origin') {
+      setSelectingOrigin(true);
+      setSelectingDestination(false);
+      setSelectingStopover(false);
+      return;
+    }
+    if (autoSelectMode === 'destination') {
+      setSelectingDestination(true);
+      setSelectingOrigin(false);
+      setSelectingStopover(false);
+      return;
+    }
+    if (autoSelectMode === 'stopover') {
+      setSelectingStopover(true);
+      setSelectingOrigin(false);
+      setSelectingDestination(false);
+    }
+  }, [autoSelectMode]);
 
   // Calculate bounding box for route to fit all coordinates
   useEffect(() => {
@@ -130,6 +169,31 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
           longitudeDelta: Math.max(lonDelta, 0.01)
         });
       }
+    } else if (polylines && polylines.length > 0) {
+      const all = polylines
+        .flatMap((p) => (Array.isArray(p?.coords) ? p.coords : []))
+        .filter((c) => typeof c?.latitude === 'number' && typeof c?.longitude === 'number' && !(c.latitude === 0 && c.longitude === 0));
+
+      if (all.length > 0) {
+        const lats = all.map((c) => c.latitude);
+        const lons = all.map((c) => c.longitude);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const minLon = Math.min(...lons);
+        const maxLon = Math.max(...lons);
+
+        const centerLat = (minLat + maxLat) / 2;
+        const centerLon = (minLon + maxLon) / 2;
+        const latDelta = (maxLat - minLat) * 1.3;
+        const lonDelta = (maxLon - minLon) * 1.3;
+
+        setRegion({
+          latitude: centerLat,
+          longitude: centerLon,
+          latitudeDelta: Math.max(latDelta, 0.01),
+          longitudeDelta: Math.max(lonDelta, 0.01)
+        });
+      }
     } else if (polylineCoords && polylineCoords.length > 0) {
       const valid = polylineCoords.filter(c => typeof c?.latitude === 'number' && typeof c?.longitude === 'number' && !(c.latitude === 0 && c.longitude === 0));
       if (valid.length > 0) {
@@ -159,13 +223,14 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         longitudeDelta: 0.05
       });
     }
-  }, [route, origin, polylineCoords]);
+  }, [route, origin, polylineCoords, polylines]);
 
   // Fetch preview polyline when origin and destination are set but no computed route
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (route || (polylineCoords && polylineCoords.length >= 2) || !origin || !destination) {
+      const hasPolylines = !!(polylines && polylines.some((p) => Array.isArray(p?.coords) && p.coords.length >= 2));
+      if (route || hasPolylines || (polylineCoords && polylineCoords.length >= 2) || !origin || !destination) {
         setPreviewCoords(null);
         setPreviewSource(null);
         return;
@@ -184,7 +249,15 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       }
     })();
     return () => { cancelled = true; };
-  }, [origin?.coordinates.latitude, origin?.coordinates.longitude, destination?.coordinates.latitude, destination?.coordinates.longitude, !!route, !!(polylineCoords && polylineCoords.length >= 2)]);
+  }, [
+    origin?.coordinates.latitude,
+    origin?.coordinates.longitude,
+    destination?.coordinates.latitude,
+    destination?.coordinates.longitude,
+    !!route,
+    !!(polylineCoords && polylineCoords.length >= 2),
+    !!(polylines && polylines.length)
+  ]);
 
   const normalizeTransportType = (t?: string) => (t ?? '').trim().toLowerCase();
 
@@ -777,7 +850,24 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
             ))}
 
             {/* Render custom polyline (e.g. private vehicle) when no Route object is provided */}
-            {showRoute && !route && polylineCoords && polylineCoords.length >= 2 && (
+            {showRoute && !route && polylines && polylines.length > 0 && (
+              <>
+                {polylines
+                  .filter((p) => Array.isArray(p?.coords) && p.coords.length >= 2)
+                  .map((p, idx) => (
+                    <LeafletPolyline
+                      key={`custom-leg-${idx}`}
+                      positions={p.coords.map((c) => [c.latitude, c.longitude] as [number, number])}
+                      color={p.color || polylineColor}
+                      weight={typeof p.width === 'number' ? p.width : polylineWidth}
+                      dashArray={p.dashed ? '3 10' : undefined}
+                    />
+                  ))}
+              </>
+            )}
+
+            {/* Render single custom polyline (legacy) when no Route object is provided */}
+            {showRoute && !route && (!polylines || polylines.length === 0) && polylineCoords && polylineCoords.length >= 2 && (
               <LeafletPolyline
                 positions={polylineCoords.map(c => [c.latitude, c.longitude] as [number, number])}
                 color={polylineColor}
@@ -834,6 +924,14 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       };
       onDestinationSelect(location);
       setSelectingDestination(false);
+    } else if (selectingStopover && onStopoverSelect) {
+      const location: Location = {
+        name: `Location at ${coordinate.latitude.toFixed(4)}, ${coordinate.longitude.toFixed(4)}`,
+        coordinates: coordinate,
+        address: 'Selected from map'
+      };
+      onStopoverSelect(location);
+      setSelectingStopover(false);
     }
   };
 
@@ -1065,7 +1163,27 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         ))}
 
         {/* Fallback route rendering for simple routes without segments */}
-        {showRoute && !route && polylineCoords && polylineCoords.length >= 2 && (
+        {showRoute && !route && polylines && polylines.length > 0 && (
+          <>
+            {polylines
+              .filter((p) => Array.isArray(p?.coords) && p.coords.length >= 2)
+              .map((p, idx) => (
+                <Polyline
+                  key={`custom-leg-native-${idx}`}
+                  coordinates={p.coords}
+                  strokeColor={p.color || polylineColor}
+                  strokeWidth={typeof p.width === 'number' ? p.width : polylineWidth}
+                  lineDashPattern={p.dashed ? [4, 8] : undefined}
+                  geodesic={false}
+                  zIndex={5}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              ))}
+          </>
+        )}
+
+        {showRoute && !route && (!polylines || polylines.length === 0) && polylineCoords && polylineCoords.length >= 2 && (
           <Polyline
             coordinates={polylineCoords}
             strokeColor={polylineColor}
@@ -1078,7 +1196,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         )}
 
         {/* Preview polyline only when we don't have a computed/explicit geometry */}
-        {showRoute && !route && (!polylineCoords || polylineCoords.length < 2) && origin && destination && previewCoords && (
+        {showRoute && !route && (!polylines || polylines.length === 0) && (!polylineCoords || polylineCoords.length < 2) && origin && destination && previewCoords && (
           <Polyline
             coordinates={previewCoords}
             strokeColor="#3498db"
@@ -1101,7 +1219,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         </View>
       )}
 
-      {(onOriginSelect || onDestinationSelect) && (
+      {(onOriginSelect || onDestinationSelect || onStopoverSelect) && (
         <View style={styles.controls}>
           {onOriginSelect && (
             <TouchableOpacity
@@ -1112,6 +1230,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
               onPress={() => {
                 setSelectingOrigin(!selectingOrigin);
                 setSelectingDestination(false);
+                setSelectingStopover(false);
               }}
             >
               <Text style={{fontSize: 20, color: selectingOrigin ? '#fff' : '#27ae60'}}>*</Text>
@@ -1135,6 +1254,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
               onPress={() => {
                 setSelectingDestination(!selectingDestination);
                 setSelectingOrigin(false);
+                setSelectingStopover(false);
               }}
             >
               <Text style={{fontSize: 20, color: selectingDestination ? '#fff' : '#e74c3c'}}>*</Text>
@@ -1148,13 +1268,37 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
               </Text>
             </TouchableOpacity>
           )}
+
+          {onStopoverSelect && (
+            <TouchableOpacity
+              style={[
+                styles.controlButton,
+                selectingStopover && styles.controlButtonActive
+              ]}
+              onPress={() => {
+                setSelectingStopover(!selectingStopover);
+                setSelectingOrigin(false);
+                setSelectingDestination(false);
+              }}
+            >
+              <Text style={{ fontSize: 20, color: selectingStopover ? '#fff' : '#2980b9' }}>*</Text>
+              <Text
+                style={[
+                  styles.controlText,
+                  selectingStopover && styles.controlTextActive
+                ]}
+              >
+                Add Stopover
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
-      {(selectingOrigin || selectingDestination) && (
+      {(selectingOrigin || selectingDestination || selectingStopover) && (
         <View style={styles.instructionBanner}>
           <Text style={styles.instructionText}>
-            Tap on the map to select {selectingOrigin ? 'origin' : 'destination'}
+            Tap on the map to select {selectingOrigin ? 'origin' : selectingDestination ? 'destination' : 'stopover'}
           </Text>
         </View>
       )}

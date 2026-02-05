@@ -86,6 +86,32 @@ const PrivateVehicleResultsScreen: React.FC = () => {
 
   const isMock = routeResult.source === 'mock';
 
+  const legColors = ['#1e88e5', '#8e24aa', '#43a047', '#fb8c00'];
+  const legs = Array.isArray(routeResult.legs) ? routeResult.legs : [];
+  const hasLegBreakdown = legs.length >= 2;
+  const legPolylines = hasLegBreakdown
+    ? legs
+        .filter((l) => Array.isArray(l.geometry) && l.geometry.length >= 2)
+        .map((l, idx) => ({
+          coords: l.geometry!,
+          color: legColors[idx % legColors.length],
+          width: 5
+        }))
+    : null;
+
+  const formatTime = (d: Date) => {
+    try {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return d.toLocaleTimeString();
+    }
+  };
+
+  const computeLegSpeedKph = (distanceKm: number, timeMin: number) => {
+    if (!distanceKm || !timeMin || timeMin <= 0) return null;
+    return distanceKm / (timeMin / 60);
+  };
+
   return (
     <ScrollView style={styles.container}>
       {isMock && (
@@ -104,13 +130,67 @@ const PrivateVehicleResultsScreen: React.FC = () => {
           origin={routeResult.origin}
           destination={routeResult.destination}
           stopovers={routeResult.stopovers}
-          polylineCoords={routeResult.geometry}
+          polylines={legPolylines}
+          polylineCoords={!legPolylines ? routeResult.geometry : null}
           showRoute={true}
         />
       </View>
 
+      {hasLegBreakdown && (
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryTitle}>Leg Breakdown</Text>
+
+          {(() => {
+            const startTs = Date.now();
+            let cumulativeMin = 0;
+            return legs.map((leg, idx) => {
+              const dist = Number(leg.distanceKm || 0);
+              const timeMin = Number(leg.estimatedTimeMin || 0);
+              const fuelCostLeg = typeof leg.fuelCost === 'number' ? leg.fuelCost : (dist / (vehicle.fuelEfficiency || 1)) * fuelPrice;
+              const speedKph = computeLegSpeedKph(dist, timeMin);
+              cumulativeMin += timeMin;
+              const eta = new Date(startTs + cumulativeMin * 60_000);
+
+              const labelFrom = idx === 0 ? 'Origin' : `Stopover ${idx}`;
+              const labelTo = idx === legs.length - 1 ? 'Destination' : `Stopover ${idx + 1}`;
+
+              return (
+                <View key={leg.id || `leg-${idx}`} style={[styles.legCard, { borderLeftColor: legColors[idx % legColors.length] }]}>
+                  <Text style={styles.legTitle}>Leg {idx + 1}: {labelFrom} → {labelTo}</Text>
+                  <Text style={styles.legSubtitle} numberOfLines={2}>
+                    {leg.origin?.name} → {leg.destination?.name}
+                  </Text>
+
+                  <View style={styles.legMetricsRow}>
+                    <View style={styles.legMetricItem}>
+                      <Text style={styles.legMetricLabel}>Gas</Text>
+                      <Text style={styles.legMetricValue}>₱{Number(fuelCostLeg || 0).toFixed(2)}</Text>
+                    </View>
+                    <View style={styles.legMetricItem}>
+                      <Text style={styles.legMetricLabel}>Speed</Text>
+                      <Text style={styles.legMetricValue}>
+                        {speedKph ? `${speedKph.toFixed(1)} km/h` : '—'}
+                      </Text>
+                    </View>
+                    <View style={styles.legMetricItem}>
+                      <Text style={styles.legMetricLabel}>ETA</Text>
+                      <Text style={styles.legMetricValue}>{formatTime(eta)}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.legMetaRow}>
+                    <Text style={styles.legMetaText}>Distance: {dist.toFixed(1)} km</Text>
+                    <Text style={styles.legMetaText}>Time: {Math.round(timeMin)} min</Text>
+                  </View>
+                </View>
+              );
+            });
+          })()}
+        </View>
+      )}
+
       <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>Trip Summary</Text>
+        <Text style={styles.summaryTitle}>{hasLegBreakdown ? 'Complete Summary' : 'Trip Summary'}</Text>
         
         <View style={styles.summaryRow}>
           <View style={styles.summaryItem}>
@@ -324,6 +404,54 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#2c3e50'
+  },
+  legCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderLeftWidth: 6,
+    borderLeftColor: '#1e88e5',
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#ecf0f1'
+  },
+  legTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#2c3e50'
+  },
+  legSubtitle: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    marginTop: 4,
+    marginBottom: 10
+  },
+  legMetricsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between'
+  },
+  legMetricItem: {
+    flex: 1,
+    alignItems: 'center'
+  },
+  legMetricLabel: {
+    fontSize: 12,
+    color: '#7f8c8d'
+  },
+  legMetricValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#2c3e50',
+    marginTop: 4
+  },
+  legMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10
+  },
+  legMetaText: {
+    fontSize: 12,
+    color: '#7f8c8d'
   },
   routeCard: {
     backgroundColor: '#fff',

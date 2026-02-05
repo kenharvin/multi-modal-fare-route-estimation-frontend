@@ -114,6 +114,19 @@ export enum StopoverType {
   OTHER = 'other'
 }
 
+export interface PrivateVehicleLeg {
+  id: string;
+  origin: Location;
+  destination: Location;
+  distanceKm: number;
+  estimatedTimeMin: number;
+  /** Road-following polyline for this leg (from backend geometry_coords). */
+  geometry?: Coordinates[];
+  /** Client-computed fuel metrics for this leg. */
+  fuelConsumptionL?: number;
+  fuelCost?: number;
+}
+
 // Private vehicle route
 export interface PrivateVehicleRoute {
   id: string;
@@ -127,6 +140,8 @@ export interface PrivateVehicleRoute {
   avoidTolls: boolean;
   /** Road-following polyline for map rendering (from backend geometry_coords). */
   geometry?: Coordinates[];
+  /** Optional breakdown of the journey by legs (origin → stopovers → destination). */
+  legs?: PrivateVehicleLeg[];
   fuzzyScore?: number;
   source?: 'backend' | 'mock';
   errorMessage?: string;

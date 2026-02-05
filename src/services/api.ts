@@ -360,35 +360,147 @@ export const calculatePrivateVehicleRoute = async (
 ): Promise<PrivateVehicleRoute> => {
   try {
     // Backend currently returns distance/time + geometry; compute fuel metrics client-side.
-    const payload = {
-      origin: {
-        name: origin?.name,
-        lat: origin?.coordinates?.latitude,
-        lon: origin?.coordinates?.longitude
-      },
-      destination: {
-        name: destination?.name,
-        lat: destination?.coordinates?.latitude,
-        lon: destination?.coordinates?.longitude
-      }
-    };
-
-    const response = await apiClient.post('/private-vehicle/route', payload);
-    const data = response.data || {};
-
-    const geometry = Array.isArray(data.geometry_coords)
-      ? data.geometry_coords
-          .filter((p: any) => Array.isArray(p) && p.length >= 2)
-          .map((p: number[]) => ({ latitude: p[1], longitude: p[0] }))
-          .filter((c: any) => typeof c.latitude === 'number' && typeof c.longitude === 'number' && !(c.latitude === 0 && c.longitude === 0))
-      : undefined;
-
-    const distanceKm = typeof data.distance_km === 'number' ? data.distance_km : Number(data.distance_km || 0);
-    const estimatedTimeMin = typeof data.estimated_time_min === 'number'
-      ? data.estimated_time_min
-      : Number(data.estimated_time_min || 0);
 
     const safeEfficiency = vehicle?.fuelEfficiency && vehicle.fuelEfficiency > 0 ? vehicle.fuelEfficiency : 1;
+
+    const buildPayload = (o: Location, d: Location, stopoverLocs?: Location[]) => {
+      const stopoverPayload = (stopoverLocs || [])
+        .filter((loc): loc is Location => !!loc)
+        .map((loc) => {
+          const lat = loc?.coordinates?.latitude;
+          const lon = loc?.coordinates?.longitude;
+          if (typeof lat === 'number' && typeof lon === 'number') {
+            return { name: loc?.name, lat, lon };
+          }
+          return loc?.name;
+        })
+        .filter((x) => x !== undefined && x !== null && String(x).trim().length > 0);
+
+      return {
+        origin: {
+          name: o?.name,
+          lat: o?.coordinates?.latitude,
+          lon: o?.coordinates?.longitude
+        },
+        destination: {
+          name: d?.name,
+          lat: d?.coordinates?.latitude,
+          lon: d?.coordinates?.longitude
+        },
+        stopovers: stopoverPayload.length ? stopoverPayload : undefined
+      };
+    };
+
+    const requestRoute = async (o: Location, d: Location, stopoverLocs?: Location[]) => {
+      const payload = buildPayload(o, d, stopoverLocs);
+      const response = await apiClient.post('/private-vehicle/route', payload);
+      const data = response.data || {};
+
+      const geometry = Array.isArray(data.geometry_coords)
+        ? data.geometry_coords
+            .filter((p: any) => Array.isArray(p) && p.length >= 2)
+            .map((p: number[]) => ({ latitude: p[1], longitude: p[0] }))
+            .filter(
+              (c: any) => typeof c.latitude === 'number' && typeof c.longitude === 'number' && !(c.latitude === 0 && c.longitude === 0)
+            )
+        : undefined;
+
+      const distanceKm = typeof data.distance_km === 'number' ? data.distance_km : Number(data.distance_km || 0);
+      const estimatedTimeMin =
+        typeof data.estimated_time_min === 'number' ? data.estimated_time_min : Number(data.estimated_time_min || 0);
+
+      return {
+        distanceKm,
+        estimatedTimeMin,
+        geometry: geometry && geometry.length >= 2 ? geometry : undefined
+      };
+    };
+
+    const stitchGeometries = (geoms: ({ latitude: number; longitude: number }[] | undefined)[]) => {
+      const stitched: { latitude: number; longitude: number }[] = [];
+      for (const g of geoms) {
+        if (!Array.isArray(g) || g.length < 2) continue;
+        if (stitched.length === 0) {
+          stitched.push(...g);
+          continue;
+        }
+        const last = stitched[stitched.length - 1];
+        const first = g[0];
+        const same = last && first && last.latitude === first.latitude && last.longitude === first.longitude;
+        stitched.push(...(same ? g.slice(1) : g));
+      }
+      return stitched.length >= 2 ? stitched : undefined;
+    };
+
+    const stopoverLocs = (stopovers || []).map((s) => s?.location).filter((x): x is Location => !!x);
+
+    // If stopovers exist, compute each leg separately so the UI can show per-leg metrics and draw per-leg colored polylines.
+    if (stopoverLocs.length > 0) {
+      const points: Location[] = [origin, ...stopoverLocs, destination];
+      const legs = [] as {
+        id: string;
+        origin: Location;
+        destination: Location;
+        distanceKm: number;
+        estimatedTimeMin: number;
+        geometry?: { latitude: number; longitude: number }[];
+        fuelConsumptionL?: number;
+        fuelCost?: number;
+      }[];
+
+      try {
+        for (let i = 0; i < points.length - 1; i++) {
+          const o = points[i];
+          const d = points[i + 1];
+          const r = await requestRoute(o, d);
+          const dist = Number(r.distanceKm || 0);
+          const timeMin = Number(r.estimatedTimeMin || 0);
+          const fuelConsumptionL = dist / safeEfficiency;
+          const fuelCost = fuelConsumptionL * (fuelPrice || 0);
+
+          legs.push({
+            id: `${Date.now()}-${i}`,
+            origin: o,
+            destination: d,
+            distanceKm: dist,
+            estimatedTimeMin: Math.round(timeMin),
+            geometry: r.geometry,
+            fuelConsumptionL,
+            fuelCost
+          });
+        }
+
+        const totalDistance = legs.reduce((acc, l) => acc + (l.distanceKm || 0), 0);
+        const totalTimeMin = legs.reduce((acc, l) => acc + (l.estimatedTimeMin || 0), 0);
+        const geometry = stitchGeometries(legs.map((l) => l.geometry));
+
+        const fuelConsumption = totalDistance / safeEfficiency;
+        const fuelCost = fuelConsumption * (fuelPrice || 0);
+
+        return {
+          id: String(Date.now()),
+          origin,
+          destination,
+          stopovers,
+          totalDistance,
+          fuelConsumption,
+          fuelCost,
+          estimatedTime: Math.round(totalTimeMin),
+          avoidTolls: !!preferences?.avoidTolls,
+          geometry,
+          legs,
+          source: 'backend'
+        };
+      } catch (e) {
+        // If any per-leg call fails, fall back to a single multi-stop call.
+        // (This keeps the feature robust even if one leg can't be routed.)
+      }
+    }
+
+    // No stopovers (or per-leg failed): single request.
+    const single = await requestRoute(origin, destination, stopoverLocs.length ? stopoverLocs : undefined);
+    const distanceKm = Number(single.distanceKm || 0);
+    const estimatedTimeMin = Number(single.estimatedTimeMin || 0);
     const fuelConsumption = distanceKm / safeEfficiency;
     const fuelCost = fuelConsumption * (fuelPrice || 0);
 
@@ -402,7 +514,19 @@ export const calculatePrivateVehicleRoute = async (
       fuelCost,
       estimatedTime: Math.round(estimatedTimeMin),
       avoidTolls: !!preferences?.avoidTolls,
-      geometry: geometry && geometry.length >= 2 ? geometry : undefined,
+      geometry: single.geometry,
+      legs: [
+        {
+          id: `${Date.now()}-0`,
+          origin,
+          destination,
+          distanceKm,
+          estimatedTimeMin: Math.round(estimatedTimeMin),
+          geometry: single.geometry,
+          fuelConsumptionL: fuelConsumption,
+          fuelCost
+        }
+      ],
       source: 'backend'
     };
   } catch (error) {
@@ -663,9 +787,49 @@ const getMockPrivateVehicleRoute = (
   fuelPrice: number,
   stopovers: Stopover[]
 ): PrivateVehicleRoute => {
-  const totalDistance = 25.5;
-  const fuelConsumption = totalDistance / vehicle.fuelEfficiency;
-  const fuelCost = fuelConsumption * fuelPrice;
+  const points: Location[] = [origin, ...(stopovers || []).map((s) => s.location).filter(Boolean as any), destination];
+  const safeEfficiency = vehicle?.fuelEfficiency && vehicle.fuelEfficiency > 0 ? vehicle.fuelEfficiency : 1;
+
+  const haversineKm = (a: any, b: any) => {
+    const R = 6371;
+    const toRad = (x: number) => (x * Math.PI) / 180;
+    const lat1 = a?.coordinates?.latitude;
+    const lon1 = a?.coordinates?.longitude;
+    const lat2 = b?.coordinates?.latitude;
+    const lon2 = b?.coordinates?.longitude;
+    if ([lat1, lon1, lat2, lon2].some((x) => typeof x !== 'number')) return 0;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const s1 = Math.sin(dLat / 2);
+    const s2 = Math.sin(dLon / 2);
+    const h = s1 * s1 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * s2 * s2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  };
+
+  const legs = points.slice(0, -1).map((p, i) => {
+    const o = points[i];
+    const d = points[i + 1];
+    const distanceKm = haversineKm(o, d);
+    // Assume 30 kph for mock time
+    const estimatedTimeMin = distanceKm > 0 ? Math.round((distanceKm / 30) * 60) : 0;
+    const fuelConsumptionL = distanceKm / safeEfficiency;
+    const fuelCost = fuelConsumptionL * (fuelPrice || 0);
+    return {
+      id: `mock-${i}`,
+      origin: o,
+      destination: d,
+      distanceKm,
+      estimatedTimeMin,
+      geometry: [o.coordinates, d.coordinates],
+      fuelConsumptionL,
+      fuelCost
+    };
+  });
+
+  const totalDistance = legs.reduce((acc, l) => acc + (l.distanceKm || 0), 0);
+  const totalTimeMin = legs.reduce((acc, l) => acc + (l.estimatedTimeMin || 0), 0);
+  const fuelConsumption = totalDistance / safeEfficiency;
+  const fuelCost = fuelConsumption * (fuelPrice || 0);
 
   return {
     id: '1',
@@ -675,8 +839,9 @@ const getMockPrivateVehicleRoute = (
     totalDistance,
     fuelConsumption,
     fuelCost,
-    estimatedTime: 60,
+    estimatedTime: totalTimeMin || 60,
     avoidTolls: false,
+    legs,
     fuzzyScore: 0.92
   };
 };
