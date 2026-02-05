@@ -387,7 +387,12 @@ export const calculatePrivateVehicleRoute = async (
           lat: d?.coordinates?.latitude,
           lon: d?.coordinates?.longitude
         },
-        stopovers: stopoverPayload.length ? stopoverPayload : undefined
+        stopovers: stopoverPayload.length ? stopoverPayload : undefined,
+        preferences: {
+          avoidTolls: !!preferences?.avoidTolls,
+          avoidHighways: !!preferences?.avoidHighways,
+          preferShortest: !!preferences?.preferShortest
+        }
       };
     };
 

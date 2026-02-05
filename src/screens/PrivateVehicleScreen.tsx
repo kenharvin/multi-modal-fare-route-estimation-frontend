@@ -251,7 +251,7 @@ const PrivateVehicleScreen: React.FC = () => {
         <View style={styles.preferenceRow}>
           <View style={styles.preferenceInfo}>
             <Text>ROAD</Text>
-            <Text style={styles.preferenceText}>Avoid Highways</Text>
+            <Text style={styles.preferenceText}>Avoid Expressways</Text>
           </View>
           <Switch
             value={preferences.avoidHighways}
