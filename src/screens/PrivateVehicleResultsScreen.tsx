@@ -8,6 +8,7 @@ import { useApp } from '@context/AppContext';
 import { Button, ActivityIndicator } from 'react-native-paper';
 import { calculatePrivateVehicleRoute } from '@services/api';
 import MapViewComponent from '@components/MapViewComponent';
+import { formatArrivalTimeRange, formatTimeRange } from '@/utils/helpers';
 type PrivateVehicleResultsRouteProp = RouteProp<RootStackParamList, 'PrivateVehicleResults'>;
 type PrivateVehicleResultsNavigationProp = StackNavigationProp<RootStackParamList, 'PrivateVehicleResults'>;
 
@@ -99,14 +100,6 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         }))
     : null;
 
-  const formatTime = (d: Date) => {
-    try {
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return d.toLocaleTimeString();
-    }
-  };
-
   const computeLegSpeedKph = (distanceKm: number, timeMin: number) => {
     if (!distanceKm || !timeMin || timeMin <= 0) return null;
     return distanceKm / (timeMin / 60);
@@ -141,7 +134,6 @@ const PrivateVehicleResultsScreen: React.FC = () => {
           <Text style={styles.summaryTitle}>Leg Breakdown</Text>
 
           {(() => {
-            const startTs = Date.now();
             let cumulativeMin = 0;
             return legs.map((leg, idx) => {
               const dist = Number(leg.distanceKm || 0);
@@ -149,7 +141,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
               const fuelCostLeg = typeof leg.fuelCost === 'number' ? leg.fuelCost : (dist / (vehicle.fuelEfficiency || 1)) * fuelPrice;
               const speedKph = computeLegSpeedKph(dist, timeMin);
               cumulativeMin += timeMin;
-              const eta = new Date(startTs + cumulativeMin * 60_000);
+              const etaRange = formatArrivalTimeRange(Math.round(cumulativeMin));
 
               const labelFrom = idx === 0 ? 'Origin' : `Stopover ${idx}`;
               const labelTo = idx === legs.length - 1 ? 'Destination' : `Stopover ${idx + 1}`;
@@ -174,13 +166,13 @@ const PrivateVehicleResultsScreen: React.FC = () => {
                     </View>
                     <View style={styles.legMetricItem}>
                       <Text style={styles.legMetricLabel}>ETA</Text>
-                      <Text style={styles.legMetricValue}>{formatTime(eta)}</Text>
+                      <Text style={styles.legMetricValue}>{etaRange}</Text>
                     </View>
                   </View>
 
                   <View style={styles.legMetaRow}>
                     <Text style={styles.legMetaText}>Distance: {dist.toFixed(1)} km</Text>
-                    <Text style={styles.legMetaText}>Time: {Math.round(timeMin)} min</Text>
+                    <Text style={styles.legMetaText}>Time: {formatTimeRange(Math.round(timeMin))}</Text>
                   </View>
                 </View>
               );
@@ -208,7 +200,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
           <View style={styles.summaryItem}>
             <Text>T</Text>
             <Text style={styles.summaryLabel}>Est. Time</Text>
-            <Text style={styles.summaryValue}>{routeResult.estimatedTime} min</Text>
+            <Text style={styles.summaryValue}>{formatTimeRange(routeResult.estimatedTime)}</Text>
           </View>
         </View>
 

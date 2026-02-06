@@ -9,6 +9,7 @@ import RouteCard from '@components/RouteCard';
 import MapViewComponent from '@components/MapViewComponent';
 import { Button, ActivityIndicator } from 'react-native-paper';
 import { fetchRoutes, fetchRouteGeometry, pingBackend } from '@services/api';
+import { formatTimeRange } from '@/utils/helpers';
 type RouteResultsRouteProp = RouteProp<RootStackParamList, 'RouteResults'>;
 type RouteResultsNavigationProp = StackNavigationProp<RootStackParamList, 'RouteResults'>;
 
@@ -216,7 +217,7 @@ const RouteResultsScreen: React.FC = () => {
               </View>
               <View style={styles.summaryItem}>
                 <Text>T</Text>
-                <Text style={styles.summaryValue}>{selectedRoute.totalTime} min</Text>
+                <Text style={styles.summaryValue}>{formatTimeRange(selectedRoute.totalTime)}</Text>
               </View>
               <View style={styles.summaryItem}>
                 <Text>↔</Text>

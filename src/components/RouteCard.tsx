@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Route, TransportType } from '@/types';
 import { getTransportStyle } from '@/utils/transportUtils';
+import { formatArrivalTimeRange, formatTimeRange } from '@/utils/helpers';
 
 interface RouteCardProps {
   route: Route;
@@ -11,14 +12,6 @@ interface RouteCardProps {
 }
 
 const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect }) => {
-  const formatEta = (minutesFromNow: number) => {
-    const mins = Number(minutesFromNow) || 0;
-    const arrive = new Date(Date.now() + Math.max(0, mins) * 60 * 1000);
-    const hh = arrive.getHours().toString().padStart(2, '0');
-    const mm = arrive.getMinutes().toString().padStart(2, '0');
-    return `${hh}:${mm}`;
-  };
-
   const titleCaseWord = (w: string) => {
     if (!w) return w;
     // Keep short acronyms (e.g., MRT, LRT, PNR, EDSA)
@@ -102,7 +95,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
       const distKm = Number(seg.distance) || 0;
 
       const metaParts: string[] = [];
-      if (time > 0) metaParts.push(`${time} min`);
+      if (time > 0) metaParts.push(formatTimeRange(time));
       if (!isWalk && fare > 0) metaParts.push(`₱${fare.toFixed(0)}`);
       const metaRight = metaParts.join(' • ');
 
@@ -200,7 +193,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
         <View style={styles.infoItem}>
           <Text>T</Text>
           <Text style={styles.infoLabel}>Time</Text>
-          <Text style={styles.infoValue}>{route.totalTime} min</Text>
+          <Text style={styles.infoValue}>{formatTimeRange(route.totalTime)}</Text>
         </View>
 
         <View style={styles.divider} />
@@ -220,7 +213,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
         <View style={styles.infoItem}>
           <Text>ETA</Text>
           <Text style={styles.infoLabel}>Arrive</Text>
-          <Text style={styles.infoValue}>{formatEta(route.totalTime)}</Text>
+          <Text style={styles.infoValue}>{formatArrivalTimeRange(route.totalTime)}</Text>
         </View>
       </View>
 

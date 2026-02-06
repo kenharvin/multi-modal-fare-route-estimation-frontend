@@ -23,6 +23,64 @@ export const formatTime = (minutes: number): string => {
   return `${hours} hr ${mins} min`;
 };
 
+export type TimeRangeOptions = {
+  variabilityPct?: number;
+  minDeltaMin?: number;
+  maxDeltaMin?: number;
+  roundToMin?: number;
+};
+
+export const getTimeRangeMinutes = (
+  minutes: number,
+  options: TimeRangeOptions = {}
+): { min: number; max: number } => {
+  const base = Math.max(0, Math.round(Number(minutes) || 0));
+  if (base <= 1) return { min: base, max: base };
+
+  const variabilityPct = typeof options.variabilityPct === 'number' ? options.variabilityPct : 0.15;
+  const minDeltaMin = typeof options.minDeltaMin === 'number' ? options.minDeltaMin : 2;
+  const maxDeltaMin = typeof options.maxDeltaMin === 'number' ? options.maxDeltaMin : 30;
+  const roundToMin = typeof options.roundToMin === 'number' ? options.roundToMin : 1;
+
+  const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+  const roundTo = (n: number, step: number) => {
+    const s = step > 0 ? step : 1;
+    return Math.round(n / s) * s;
+  };
+
+  const rawDelta = Math.round(base * variabilityPct);
+  const delta = roundTo(clamp(rawDelta, minDeltaMin, maxDeltaMin), roundToMin);
+
+  const min = Math.max(0, base - delta);
+  const max = Math.max(min, base + delta);
+  return { min, max };
+};
+
+export const formatTimeRange = (minutes: number, options: TimeRangeOptions = {}): string => {
+  const { min, max } = getTimeRangeMinutes(minutes, options);
+  if (min === max) return formatTime(min);
+
+  if (max < 60) {
+    return `${min}–${max} min`;
+  }
+  return `${formatTime(min)} – ${formatTime(max)}`;
+};
+
+export const formatArrivalTimeRange = (minutesFromNow: number, options: TimeRangeOptions = {}): string => {
+  const { min, max } = getTimeRangeMinutes(minutesFromNow, options);
+  const fmt = (d: Date) => {
+    const hh = d.getHours().toString().padStart(2, '0');
+    const mm = d.getMinutes().toString().padStart(2, '0');
+    return `${hh}:${mm}`;
+  };
+
+  const now = Date.now();
+  const dMin = new Date(now + Math.max(0, min) * 60_000);
+  const dMax = new Date(now + Math.max(0, max) * 60_000);
+  if (min === max) return fmt(dMin);
+  return `${fmt(dMin)}–${fmt(dMax)}`;
+};
+
 /**
  * Format distance in kilometers
  */

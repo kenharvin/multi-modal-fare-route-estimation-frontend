@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { TripPlan } from '@/types';
+import { formatTimeRange } from '@/utils/helpers';
 interface TripSummaryProps {
   tripPlan: TripPlan;
 }
@@ -24,7 +25,7 @@ const TripSummary: React.FC<TripSummaryProps> = ({ tripPlan }) => {
             <Text>T</Text>
           </View>
           <Text style={styles.summaryLabel}>Total Time</Text>
-          <Text style={styles.summaryValue}>{tripPlan.totalTime} min</Text>
+          <Text style={styles.summaryValue}>{formatTimeRange(tripPlan.totalTime)}</Text>
         </View>
 
         <View style={styles.summaryItem}>
