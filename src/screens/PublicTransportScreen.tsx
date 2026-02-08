@@ -9,6 +9,7 @@ import { useApp } from '@context/AppContext';
 import DestinationInput from '@components/DestinationInput';
 import MapViewComponent from '@components/MapViewComponent';
 import { Button } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
 type PublicTransportNavigationProp = StackNavigationProp<RootStackParamList, 'PublicTransport'>;
 
@@ -23,6 +24,9 @@ const PublicTransportScreen: React.FC = () => {
   // Leave empty by default so long-distance trips aren't accidentally filtered out.
   const [maxTransfers, setMaxTransfers] = useState<string>('');
   const [preferredModes, setPreferredModes] = useState<string[]>(['walk','jeepney','bus','lrt','mrt','pnr']);
+
+  const showBudgetInput = preference === PublicTransportPreference.LOWEST_FARE;
+  const showMaxTransfersInput = preference === PublicTransportPreference.FEWEST_TRANSFERS;
 
   const preferences = [
     { value: PublicTransportPreference.BALANCED, label: 'Recommended', icon: 'star' },
@@ -43,8 +47,8 @@ const PublicTransportScreen: React.FC = () => {
       origin: selectedOrigin,
       destination: selectedDestination,
       preference,
-      budget: Number(budget) || undefined,
-      maxTransfers: Number(maxTransfers) || undefined,
+      budget: showBudgetInput ? (Number(budget) || undefined) : undefined,
+      maxTransfers: showMaxTransfersInput ? (Number(maxTransfers) || undefined) : undefined,
       preferredModes
     });
   };
@@ -97,51 +101,79 @@ const PublicTransportScreen: React.FC = () => {
         <Text style={styles.sectionTitle}>Preferences</Text>
         <View style={styles.preferencesContainer}>
           {preferences.map((pref) => (
+            (() => {
+              const isActive = preference === pref.value;
+              return (
             <TouchableOpacity
               key={pref.value}
               style={[
                 styles.preferenceCard,
                 preference === pref.value && styles.preferenceCardActive
               ]}
-              onPress={() => setPreference(pref.value)}
+              onPress={() => {
+                setPreference(pref.value);
+                // Clear values for inputs that will be hidden to avoid stale constraints.
+                if (pref.value !== PublicTransportPreference.LOWEST_FARE) {
+                  setBudget('');
+                }
+                if (pref.value !== PublicTransportPreference.FEWEST_TRANSFERS) {
+                  setMaxTransfers('');
+                }
+              }}
             >
-              <Text style={{fontSize: 32, color: preference === pref.value ? '#3498db' : '#7f8c8d'}}>
-                {pref.label.charAt(0)}
-              </Text>
+              <View style={[styles.preferenceIconWrap, isActive && styles.preferenceIconWrapActive]}>
+                <MaterialCommunityIcons
+                  // Type widening is fine here; icons are constrained by our array.
+                  name={pref.icon as any}
+                  size={26}
+                  color={isActive ? colors.primary : colors.textSecondary}
+                />
+              </View>
               <Text
                 style={[
                   styles.preferenceLabel,
                   preference === pref.value && styles.preferenceLabelActive
                 ]}
+                numberOfLines={2}
+                ellipsizeMode="tail"
               >
                 {pref.label}
               </Text>
             </TouchableOpacity>
+              );
+            })()
           ))}
         </View>
 
-        <View style={styles.inputRow}>
-          <View style={styles.inputCol}>
-            <Text style={styles.inputLabel}>Budget (₱)</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={budget}
-              onChangeText={setBudget}
-              placeholder="Optional (e.g. 150)"
-            />
+        {(showBudgetInput || showMaxTransfersInput) && (
+          <View style={styles.inputRow}>
+            {showBudgetInput && (
+              <View style={styles.inputCol}>
+                <Text style={styles.inputLabel}>Budget (₱)</Text>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={budget}
+                  onChangeText={setBudget}
+                  placeholder="Optional (e.g. 150)"
+                />
+              </View>
+            )}
+
+            {showMaxTransfersInput && (
+              <View style={styles.inputCol}>
+                <Text style={styles.inputLabel}>Max Transfers</Text>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={maxTransfers}
+                  onChangeText={setMaxTransfers}
+                  placeholder="e.g. 3"
+                />
+              </View>
+            )}
           </View>
-          <View style={styles.inputCol}>
-            <Text style={styles.inputLabel}>Max Transfers</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={maxTransfers}
-              onChangeText={setMaxTransfers}
-              placeholder="e.g. 3"
-            />
-          </View>
-        </View>
+        )}
 
         <Text style={[styles.inputLabel, { marginTop: 12 }]}>Preferred Modes</Text>
         <View style={styles.modesRow}>
@@ -237,7 +269,9 @@ const styles = StyleSheet.create({
   },
   preferencesContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: spacing.sm
   },
   inputRow: {
     flexDirection: 'row',
@@ -286,10 +320,11 @@ const styles = StyleSheet.create({
     fontWeight: '600'
   },
   preferenceCard: {
-    flex: 1,
+    width: '48%',
     alignItems: 'center',
-    padding: 16,
-    marginHorizontal: 4,
+    justifyContent: 'center',
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
     backgroundColor: colors.gray7,
     borderRadius: borderRadius.xl,
     borderWidth: 2,
@@ -299,8 +334,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryLight,
     borderColor: colors.primary
   },
+  preferenceIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.round,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.gray6
+  },
+  preferenceIconWrapActive: {
+    borderColor: colors.primary
+  },
   preferenceLabel: {
-    fontSize: fontSize.sm,
+    fontSize: fontSize.md,
     color: colors.textSecondary,
     marginTop: spacing.sm,
     textAlign: 'center',

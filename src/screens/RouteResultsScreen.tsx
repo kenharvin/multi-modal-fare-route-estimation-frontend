@@ -264,6 +264,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background
   },
+  mapContainer: {
+    height: 300,
+    margin: spacing.lg,
+    borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+    ...shadows.small
+  },
   emptyContent: {
     flex: 1,
     justifyContent: 'center',
