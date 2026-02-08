@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { Stopover, StopoverType, Location } from '@/types';
 import { Button } from 'react-native-paper';
 import DestinationInput from '@components/DestinationInput';
+import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
 interface StopoverInputProps {
   stopovers: Stopover[];
   onAddStopover: (stopover: Stopover) => void;
@@ -175,18 +176,19 @@ const StopoverInput: React.FC<StopoverInputProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 8
+    marginTop: spacing.sm
   },
   stopoversList: {
-    marginBottom: 16
+    marginBottom: spacing.lg
   },
   stopoverCard: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.xl,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
     borderWidth: 1,
-    borderColor: '#ecf0f1'
+    borderColor: colors.gray6,
+    ...shadows.small
   },
   stopoverHeader: {
     flexDirection: 'row',
@@ -194,60 +196,61 @@ const styles = StyleSheet.create({
   },
   stopoverInfo: {
     flex: 1,
-    marginLeft: 12
+    marginLeft: spacing.md
   },
   stopoverName: {
-    fontSize: 14,
+    fontSize: fontSize.md,
     fontWeight: '600',
-    color: '#2c3e50'
+    color: colors.textPrimary
   },
   stopoverType: {
-    fontSize: 12,
-    color: '#7f8c8d',
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
     textTransform: 'capitalize',
-    marginTop: 2
+    marginTop: spacing.xs
   },
   removeButton: {
-    padding: 4
+    padding: spacing.xs
   },
   addButton: {
-    borderRadius: 8,
-    borderColor: '#2196f3'
+    borderRadius: borderRadius.xl,
+    borderColor: colors.primary
   },
   form: {
-    backgroundColor: '#f8f9fa',
-    padding: 16,
-    borderRadius: 8,
+    backgroundColor: colors.white,
+    padding: spacing.lg,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
-    borderColor: '#ecf0f1'
+    borderColor: colors.gray6,
+    ...shadows.small
   },
   typeLabel: {
-    fontSize: 14,
+    fontSize: fontSize.md,
     fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 12
+    color: colors.textPrimary,
+    marginBottom: spacing.md
   },
   typesContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 16
+    marginBottom: spacing.lg
   },
   typeCard: {
     flex: 1,
     alignItems: 'center',
-    padding: 12,
+    padding: spacing.md,
     marginHorizontal: 4,
-    backgroundColor: '#fff',
-    borderRadius: 8,
+    backgroundColor: colors.gray7,
+    borderRadius: borderRadius.xl,
     borderWidth: 2,
     borderColor: 'transparent'
   },
   typeCardActive: {
-    backgroundColor: '#e3f2fd',
-    borderColor: '#2196f3'
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary
   },
   typeLabelActive: {
-    color: '#2196f3',
+    color: colors.primary,
     fontWeight: '600'
   },
   buttonRow: {
@@ -255,20 +258,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between'
   },
   mapPickButton: {
-    borderRadius: 8,
-    borderColor: '#2980b9',
-    marginBottom: 12
+    borderRadius: borderRadius.xl,
+    borderColor: colors.primaryDark,
+    marginBottom: spacing.md
   },
   button: {
     flex: 1,
     marginHorizontal: 4,
-    borderRadius: 8
+    borderRadius: borderRadius.xl
   },
   cancelButton: {
-    borderColor: '#e74c3c'
+    borderColor: colors.error
   },
   confirmButton: {
-    backgroundColor: '#27ae60'
+    backgroundColor: colors.success
   }
 });
 

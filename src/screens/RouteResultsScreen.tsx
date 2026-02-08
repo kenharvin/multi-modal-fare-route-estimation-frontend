@@ -10,6 +10,7 @@ import MapViewComponent from '@components/MapViewComponent';
 import { Button, ActivityIndicator } from 'react-native-paper';
 import { fetchRoutes, fetchRouteGeometry, pingBackend } from '@services/api';
 import { formatTimeRange } from '@/utils/helpers';
+import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
 type RouteResultsRouteProp = RouteProp<RootStackParamList, 'RouteResults'>;
 type RouteResultsNavigationProp = StackNavigationProp<RootStackParamList, 'RouteResults'>;
 
@@ -246,7 +247,7 @@ const RouteResultsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5'
+    backgroundColor: colors.background
   },
   loadingContainer: {
     flex: 1,
@@ -261,7 +262,7 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     flex: 1,
-    backgroundColor: '#f5f5f5'
+    backgroundColor: colors.background
   },
   emptyContent: {
     flex: 1,
@@ -270,20 +271,20 @@ const styles = StyleSheet.create({
     padding: 40
   },
   emptyTitle: {
-    fontSize: 24,
+    fontSize: fontSize.title,
     fontWeight: 'bold',
-    color: '#2c3e50',
+    color: colors.textPrimary,
     marginTop: 16
   },
   emptyText: {
-    fontSize: 16,
-    color: '#7f8c8d',
+    fontSize: fontSize.lg,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 8,
     marginBottom: 24
   },
   retryButton: {
-    borderRadius: 8
+    borderRadius: borderRadius.xl
   },
   mapOverlay: {
     position: 'absolute',
@@ -298,47 +299,43 @@ const styles = StyleSheet.create({
     gap: 8
   },
   mapOverlayText: {
-    fontSize: 12,
-    color: '#2c3e50'
+    fontSize: fontSize.sm,
+    color: colors.textPrimary
   },
   sheet: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    backgroundColor: colors.white,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 8
+    ...shadows.large
   },
   sheetHandleWrap: {
-    paddingTop: 10,
-    paddingBottom: 6,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
     alignItems: 'center'
   },
   sheetHandle: {
     width: 44,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#d0d7de'
+    backgroundColor: colors.gray5
   },
   routesList: {
     flex: 1
   },
   routesListContent: {
-    padding: 16,
-    paddingBottom: 8
+    padding: spacing.lg,
+    paddingBottom: spacing.sm
   },
   footer: {
-    backgroundColor: '#fff',
-    padding: 16,
+    backgroundColor: colors.white,
+    padding: spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: '#ecf0f1'
+    borderTopColor: colors.gray6
   },
   summaryRow: {
     flexDirection: 'row',
@@ -349,14 +346,14 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   summaryValue: {
-    fontSize: 16,
+    fontSize: fontSize.lg,
     fontWeight: '600',
-    color: '#2c3e50',
+    color: colors.textPrimary,
     marginTop: 4
   },
   continueButton: {
-    borderRadius: 8,
-    backgroundColor: '#3498db'
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.primary
   }
 });
 

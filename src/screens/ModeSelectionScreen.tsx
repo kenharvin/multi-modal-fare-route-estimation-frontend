@@ -5,6 +5,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
 import { TravelMode } from '@/types';
 import { useApp } from '@context/AppContext';
+import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
 type ModeSelectionNavigationProp = StackNavigationProp<RootStackParamList, 'ModeSelection'>;
 
 const ModeSelectionScreen: React.FC = () => {
@@ -55,36 +56,33 @@ const ModeSelectionScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5'
+    backgroundColor: colors.background
   },
   header: {
-    padding: 20,
-    paddingTop: 40,
-    backgroundColor: '#fff'
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xxl,
+    paddingBottom: spacing.lg,
+    backgroundColor: colors.white
   },
   title: {
-    fontSize: 28,
+    fontSize: fontSize.heading,
     fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 8
+    color: colors.textPrimary,
+    marginBottom: spacing.sm
   },
   subtitle: {
-    fontSize: 16,
-    color: '#7f8c8d'
+    fontSize: fontSize.lg,
+    color: colors.textSecondary
   },
   modesContainer: {
-    padding: 20
+    padding: spacing.lg
   },
   modeCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.xl,
+    padding: spacing.xl,
+    marginBottom: spacing.lg,
+    ...shadows.medium
   },
   iconContainer: {
     width: 80,
@@ -95,16 +93,15 @@ const styles = StyleSheet.create({
     marginBottom: 16
   },
   modeTitle: {
-    fontSize: 22,
+    fontSize: fontSize.xxl,
     fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 8
+    color: colors.textPrimary,
+    marginBottom: spacing.sm
   },
   modeDescription: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    lineHeight: 20,
-    marginBottom: 16
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+    lineHeight: 20
   },
   features: {
     marginTop: 8
@@ -115,9 +112,9 @@ const styles = StyleSheet.create({
     marginBottom: 8
   },
   featureText: {
-    fontSize: 14,
-    color: '#34495e',
-    marginLeft: 8
+    fontSize: fontSize.md,
+    color: colors.gray2,
+    marginLeft: spacing.sm
   }
 });
 

@@ -9,6 +9,7 @@ import { useApp } from '@context/AppContext';
 import DestinationInput from '@components/DestinationInput';
 import MapViewComponent from '@components/MapViewComponent';
 import { Button } from 'react-native-paper';
+import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
 type PublicTransportNavigationProp = StackNavigationProp<RootStackParamList, 'PublicTransport'>;
 
 const PublicTransportScreen: React.FC = () => {
@@ -181,52 +182,57 @@ const PublicTransportScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5'
+    backgroundColor: colors.background
   },
   header: {
-    padding: 20,
-    backgroundColor: '#fff'
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.white
   },
   title: {
-    fontSize: 24,
+    fontSize: fontSize.title,
     fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 4
+    color: colors.textPrimary,
+    marginBottom: spacing.xs
   },
   subtitle: {
-    fontSize: 14,
-    color: '#7f8c8d'
+    fontSize: fontSize.md,
+    color: colors.textSecondary
   },
   section: {
-    backgroundColor: '#fff',
-    padding: 20,
-    marginTop: 10
+    backgroundColor: colors.white,
+    padding: spacing.lg,
+    marginTop: spacing.md,
+    marginHorizontal: spacing.lg,
+    borderRadius: borderRadius.xl,
+    ...shadows.small
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: fontSize.xl,
     fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 16
+    color: colors.textPrimary,
+    marginBottom: spacing.lg
   },
   mapButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12,
-    backgroundColor: '#e3f2fd',
-    borderRadius: 8,
-    marginTop: 12
+    padding: spacing.md,
+    backgroundColor: colors.primaryLight,
+    borderRadius: borderRadius.lg,
+    marginTop: spacing.md
   },
   mapButtonText: {
-    color: '#3498db',
-    fontSize: 16,
+    color: colors.primary,
+    fontSize: fontSize.lg,
     fontWeight: '500',
-    marginLeft: 8
+    marginLeft: spacing.sm
   },
   mapContainer: {
     height: 300,
-    marginTop: 16,
-    borderRadius: 8,
+    marginTop: spacing.lg,
+    borderRadius: borderRadius.lg,
     overflow: 'hidden'
   },
   preferencesContainer: {
@@ -242,15 +248,15 @@ const styles = StyleSheet.create({
     flex: 1
   },
   inputLabel: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginBottom: 6
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm
   },
   input: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.gray7,
     borderWidth: 1,
-    borderColor: '#ecf0f1',
-    borderRadius: 8,
+    borderColor: colors.gray6,
+    borderRadius: borderRadius.lg,
     paddingHorizontal: 12,
     paddingVertical: 10
   },
@@ -261,22 +267,22 @@ const styles = StyleSheet.create({
   },
   modeChip: {
     borderWidth: 1,
-    borderColor: '#ecf0f1',
-    borderRadius: 16,
+    borderColor: colors.gray6,
+    borderRadius: borderRadius.round,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    backgroundColor: '#f8f9fa'
+    backgroundColor: colors.gray7
   },
   modeChipActive: {
-    backgroundColor: '#e3f2fd',
-    borderColor: '#3498db'
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary
   },
   modeChipText: {
-    fontSize: 12,
-    color: '#7f8c8d'
+    fontSize: fontSize.sm,
+    color: colors.textSecondary
   },
   modeChipTextActive: {
-    color: '#3498db',
+    color: colors.primary,
     fontWeight: '600'
   },
   preferenceCard: {
@@ -284,33 +290,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     marginHorizontal: 4,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
+    backgroundColor: colors.gray7,
+    borderRadius: borderRadius.xl,
     borderWidth: 2,
     borderColor: 'transparent'
   },
   preferenceCardActive: {
-    backgroundColor: '#e3f2fd',
-    borderColor: '#3498db'
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary
   },
   preferenceLabel: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginTop: 8,
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
     textAlign: 'center',
     fontWeight: '500'
   },
   preferenceLabelActive: {
-    color: '#3498db',
+    color: colors.primary,
     fontWeight: '600'
   },
   footer: {
-    padding: 20,
-    paddingBottom: 40
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xxl
   },
   findButton: {
-    borderRadius: 12,
-    backgroundColor: '#3498db'
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.primary
   },
   findButtonContent: {
     paddingVertical: 8

@@ -10,7 +10,9 @@ import DestinationInput from '@components/DestinationInput';
 import StopoverInput from '@components/StopoverInput';
 import MapViewComponent from '@components/MapViewComponent';
 import { Button, TextInput, Switch } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { searchPois } from '@services/api';
+import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
 type PrivateVehicleNavigationProp = StackNavigationProp<RootStackParamList, 'PrivateVehicle'>;
 
 const PrivateVehicleScreen: React.FC = () => {
@@ -154,7 +156,7 @@ const PrivateVehicleScreen: React.FC = () => {
           style={styles.mapButton}
           onPress={handleToggleMap}
         >
-          <Text>*</Text>
+          <MaterialCommunityIcons name="map-marker" size={18} color={colors.primary} />
           <Text style={styles.mapButtonText}>
             {showMap ? 'Hide Map' : 'Select from Map'}
           </Text>
@@ -187,9 +189,11 @@ const PrivateVehicleScreen: React.FC = () => {
               ]}
               onPress={() => handleVehicleCategoryChange(cat.value)}
             >
-              <Text style={{fontSize: 28, color: vehicle.category === cat.value ? '#2196f3' : '#7f8c8d'}}>
-                {cat.label.charAt(0)}
-              </Text>
+              <MaterialCommunityIcons
+                name={cat.icon as any}
+                size={26}
+                color={vehicle.category === cat.value ? colors.primary : colors.textSecondary}
+              />
               <Text style={[
                 styles.vehicleLabel,
                 vehicle.category === cat.value && styles.vehicleLabelActive
@@ -238,37 +242,37 @@ const PrivateVehicleScreen: React.FC = () => {
         
         <View style={styles.preferenceRow}>
           <View style={styles.preferenceInfo}>
-            <Text>NO$</Text>
+            <MaterialCommunityIcons name="cash-remove" size={18} color={colors.textSecondary} />
             <Text style={styles.preferenceText}>Avoid Tolls</Text>
           </View>
           <Switch
             value={preferences.avoidTolls}
             onValueChange={(value) => setPreferences({ ...preferences, avoidTolls: value })}
-            color="#2196f3"
+            color={colors.primary}
           />
         </View>
 
         <View style={styles.preferenceRow}>
           <View style={styles.preferenceInfo}>
-            <Text>ROAD</Text>
+            <MaterialCommunityIcons name="road-variant" size={18} color={colors.textSecondary} />
             <Text style={styles.preferenceText}>Avoid Expressways</Text>
           </View>
           <Switch
             value={preferences.avoidHighways}
             onValueChange={(value) => setPreferences({ ...preferences, avoidHighways: value })}
-            color="#2196f3"
+            color={colors.primary}
           />
         </View>
 
         <View style={styles.preferenceRow}>
           <View style={styles.preferenceInfo}>
-            <Text>DIST</Text>
+            <MaterialCommunityIcons name="map-marker-distance" size={18} color={colors.textSecondary} />
             <Text style={styles.preferenceText}>Prefer Shortest Distance</Text>
           </View>
           <Switch
             value={preferences.preferShortest}
             onValueChange={(value) => setPreferences({ ...preferences, preferShortest: value })}
-            color="#2196f3"
+            color={colors.primary}
           />
         </View>
       </View>
@@ -291,127 +295,139 @@ const PrivateVehicleScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5'
+    backgroundColor: colors.background
   },
   header: {
-    padding: 20,
-    backgroundColor: '#fff'
+    padding: spacing.lg,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.gray6,
+    ...shadows.small
   },
   title: {
-    fontSize: 24,
+    fontSize: fontSize.title,
     fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 4
+    color: colors.textPrimary,
+    marginBottom: spacing.xs
   },
   subtitle: {
-    fontSize: 14,
-    color: '#7f8c8d'
+    fontSize: fontSize.md,
+    color: colors.textSecondary
   },
   section: {
-    backgroundColor: '#fff',
-    padding: 20,
-    marginTop: 10
+    backgroundColor: colors.white,
+    padding: spacing.lg,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.gray6,
+    ...shadows.small
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: fontSize.xl,
     fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 8
+    color: colors.textPrimary,
+    marginBottom: spacing.sm
   },
   sectionSubtitle: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginBottom: 16
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.md
   },
   mapButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12,
-    backgroundColor: '#e3f2fd',
-    borderRadius: 8,
-    marginTop: 12
+    padding: spacing.md,
+    backgroundColor: colors.primaryLight,
+    borderRadius: borderRadius.lg,
+    marginTop: spacing.md
   },
   mapButtonText: {
-    color: '#2196f3',
-    fontSize: 16,
+    color: colors.primary,
+    fontSize: fontSize.lg,
     fontWeight: '500',
-    marginLeft: 8
+    marginLeft: spacing.sm
   },
   mapContainer: {
     height: 300,
-    marginTop: 16,
-    borderRadius: 8,
-    overflow: 'hidden'
+    marginTop: spacing.md,
+    borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+    ...shadows.small
   },
   vehiclesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 16
+    marginBottom: spacing.md
   },
   vehicleCard: {
     width: '30%',
     alignItems: 'center',
-    padding: 12,
+    padding: spacing.md,
     margin: 4,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
+    backgroundColor: colors.gray7,
+    borderRadius: borderRadius.xl,
     borderWidth: 2,
     borderColor: 'transparent'
   },
   vehicleCardActive: {
-    backgroundColor: '#e3f2fd',
-    borderColor: '#2196f3'
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary
   },
   vehicleLabel: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginTop: 4,
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
     textAlign: 'center',
     fontWeight: '500'
   },
   vehicleLabelActive: {
-    color: '#2196f3',
+    color: colors.primary,
     fontWeight: '600'
   },
   efficiencyText: {
-    fontSize: 10,
-    color: '#95a5a6',
+    fontSize: fontSize.xs,
+    color: colors.textLight,
     marginTop: 2
   },
   input: {
-    marginBottom: 12
+    marginBottom: spacing.md
   },
   preferenceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#ecf0f1'
+    borderBottomColor: colors.gray6
   },
   preferenceInfo: {
     flexDirection: 'row',
     alignItems: 'center'
   },
   preferenceText: {
-    fontSize: 16,
-    color: '#2c3e50',
-    marginLeft: 12
+    fontSize: fontSize.lg,
+    color: colors.textPrimary,
+    marginLeft: spacing.md
   },
   footer: {
-    padding: 20,
-    paddingBottom: 40
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl
   },
   calculateButton: {
-    borderRadius: 12,
-    backgroundColor: '#2196f3'
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.primary
   },
   calculateButtonContent: {
-    paddingVertical: 8
+    paddingVertical: spacing.sm
   },
   calculateButtonLabel: {
-    fontSize: 16,
+    fontSize: fontSize.lg,
     fontWeight: '600'
   }
 });

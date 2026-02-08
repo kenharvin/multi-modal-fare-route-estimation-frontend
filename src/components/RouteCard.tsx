@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Route, TransportType } from '@/types';
 import { getTransportStyle } from '@/utils/transportUtils';
 import { formatArrivalTimeRange, formatTimeRange } from '@/utils/helpers';
+import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
 
 interface RouteCardProps {
   route: Route;
@@ -11,10 +12,19 @@ interface RouteCardProps {
   onSelect?: () => void;
 }
 
+type StepRow = {
+  key: string;
+  type: 'start' | 'segment' | 'end';
+  icon: string;
+  color: string;
+  title: string;
+  subtitle?: string;
+  metaRight?: string;
+};
+
 const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect }) => {
   const titleCaseWord = (w: string) => {
     if (!w) return w;
-    // Keep short acronyms (e.g., MRT, LRT, PNR, EDSA)
     if (w.length <= 4 && w.toUpperCase() === w) return w;
     return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
   };
@@ -23,15 +33,11 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
     const name = String(raw || '').trim();
     if (!name) return null;
 
-    // Hide backend/internal identifiers
     const hiddenPrefixes = ['LTFRB', 'ROUTE', 'TRIP', 'SHAPE', 'GTFS'];
     const hiddenRe = new RegExp(`^(${hiddenPrefixes.join('|')})[_:-]?[A-Z0-9]+$`, 'i');
     if (hiddenRe.test(name)) return null;
-
-    // If it looks like an internal numeric route code
     if (/^route[_:-]?\d+$/i.test(name)) return null;
 
-    // Humanize ALL_CAPS_WITH_UNDERSCORES (e.g., EDSA_CAROUSEL -> EDSA Carousel)
     if (/^[A-Z0-9]+(?:_[A-Z0-9]+)+$/.test(name)) {
       const words = name.split('_').filter(Boolean);
       const human = words.map(titleCaseWord).join(' ').replace(/\s+/g, ' ').trim();
@@ -42,52 +48,51 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
   };
 
   const cleanServiceLabel = (seg: any): string => {
-    const t: TransportType = seg?.transportType;
+    const transportType: TransportType = seg?.transportType;
     const mode = String(seg?.mode || '').toLowerCase();
-    if (t === TransportType.TRAIN) {
+
+    if (transportType === TransportType.TRAIN) {
       if (mode.includes('mrt')) return 'MRT';
       if (mode.includes('lrt')) return 'LRT';
       if (mode.includes('pnr')) return 'PNR';
       return 'Train';
     }
-    const transportStyle = getTransportStyle(t);
+
+    const transportStyle = getTransportStyle(transportType);
     return transportStyle.label || 'Transit';
   };
 
-  const stepRows = (() => {
-    const s = route.segments || [];
-    if (s.length === 0) return [] as { key: string; type: 'start' | 'segment'; icon: string; color: string; title: string; subtitle?: string; metaRight?: string }[];
+  const stepRows: StepRow[] = (() => {
+    const segments = route.segments || [];
+    if (segments.length === 0) return [];
 
-    const rows: { key: string; type: 'start' | 'segment'; icon: string; color: string; title: string; subtitle?: string; metaRight?: string }[] = [];
+    const rows: StepRow[] = [];
 
-    // Start row
-    const startName = s[0]?.origin?.name || 'Your location';
     rows.push({
       key: 'start',
       type: 'start',
       icon: '●',
-      color: '#1a73e8',
-      title: startName
+      color: colors.primary,
+      title: segments[0]?.origin?.name || 'Your location'
     });
 
     let lastNonWalkKey: string | null = null;
     let sawWalkSinceLastNonWalk = false;
     let pendingTransferAt: string | null = null;
 
-    for (let i = 0; i < s.length; i++) {
-      const seg = s[i];
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
       const transportStyle = getTransportStyle(seg.transportType);
       const isWalk = seg.transportType === TransportType.WALK;
       const routeName = (seg.routeName || '').trim();
       const nonWalkKey = isWalk ? null : `${seg.transportType}:${routeName}`;
 
-      if (isWalk) {
-        if (lastNonWalkKey) sawWalkSinceLastNonWalk = true;
+      if (isWalk && lastNonWalkKey) {
+        sawWalkSinceLastNonWalk = true;
       }
 
       if (!isWalk && lastNonWalkKey && nonWalkKey && (nonWalkKey !== lastNonWalkKey || sawWalkSinceLastNonWalk)) {
-        const transferAt = s[i - 1]?.destination?.name || 'transfer point';
-        pendingTransferAt = transferAt;
+        pendingTransferAt = segments[i - 1]?.destination?.name || 'transfer point';
       }
 
       const time = Number(seg.estimatedTime) || 0;
@@ -103,6 +108,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
         const destName = seg.destination?.name || 'next stop';
         const subtitleParts: string[] = [];
         if (distKm > 0) subtitleParts.push(`${distKm.toFixed(distKm < 1 ? 2 : 1)} km`);
+
         rows.push({
           key: seg.id || `seg-${i}`,
           type: 'segment',
@@ -112,38 +118,40 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
           subtitle: subtitleParts.length ? subtitleParts.join('\n') : undefined,
           metaRight
         });
-      } else {
-        const serviceLabel = cleanServiceLabel(seg);
-        const routeLabel = cleanRouteName(routeName);
-        const subtitleParts: string[] = [];
-        if (pendingTransferAt) subtitleParts.push(`Transfer at ${pendingTransferAt}`);
-        if (routeLabel) subtitleParts.push(routeLabel);
-        if (seg.origin?.name && seg.destination?.name) subtitleParts.push(`${seg.origin.name} → ${seg.destination.name}`);
-        if (distKm > 0) subtitleParts.push(`Distance: ${distKm.toFixed(distKm < 1 ? 2 : 1)} km`);
-        rows.push({
-          key: seg.id || `seg-${i}`,
-          type: 'segment',
-          icon: transportStyle.icon,
-          color: transportStyle.color,
-          title: `Take ${serviceLabel}`,
-          subtitle: subtitleParts.length ? subtitleParts.join('\n') : undefined,
-          metaRight
-        });
 
-        lastNonWalkKey = nonWalkKey;
-        sawWalkSinceLastNonWalk = false;
-        pendingTransferAt = null;
+        continue;
       }
+
+      const serviceLabel = cleanServiceLabel(seg);
+      const routeLabel = cleanRouteName(routeName);
+      const subtitleParts: string[] = [];
+      if (pendingTransferAt) subtitleParts.push(`Transfer at ${pendingTransferAt}`);
+      if (routeLabel) subtitleParts.push(routeLabel);
+      if (seg.origin?.name && seg.destination?.name) subtitleParts.push(`${seg.origin.name} → ${seg.destination.name}`);
+      if (distKm > 0) subtitleParts.push(`Distance: ${distKm.toFixed(distKm < 1 ? 2 : 1)} km`);
+
+      rows.push({
+        key: seg.id || `seg-${i}`,
+        type: 'segment',
+        icon: transportStyle.icon,
+        color: transportStyle.color,
+        title: `Take ${serviceLabel}`,
+        subtitle: subtitleParts.length ? subtitleParts.join('\n') : undefined,
+        metaRight
+      });
+
+      lastNonWalkKey = nonWalkKey;
+      sawWalkSinceLastNonWalk = false;
+      pendingTransferAt = null;
     }
 
-    // End row
-    const endName = s[s.length - 1]?.destination?.name;
+    const endName = segments[segments.length - 1]?.destination?.name;
     if (endName) {
       rows.push({
         key: 'end',
-        type: 'start',
+        type: 'end',
         icon: '●',
-        color: '#d93025',
+        color: colors.error,
         title: endName
       });
     }
@@ -158,17 +166,17 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
           <Text style={styles.rankText}>#{rank}</Text>
         </View>
       )}
-      
+
       {route.fuzzyScore !== undefined && (
         <View style={styles.scoreBadge}>
-          <Text>*</Text>
+          <Text style={styles.scoreIcon}>*</Text>
           <Text style={styles.scoreText}>{(route.fuzzyScore * 100).toFixed(0)}</Text>
         </View>
       )}
 
       {isSelected && (
         <View style={styles.transportIcons}>
-          {route.segments.map((segment, index) => {
+          {(route.segments || []).map((segment, index) => {
             const transportStyle = getTransportStyle(segment.transportType);
             return (
               <View key={index} style={styles.iconContainer}>
@@ -183,7 +191,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
 
       <View style={styles.infoRow}>
         <View style={styles.infoItem}>
-          <Text>$</Text>
+          <Text style={styles.infoIcon}>$</Text>
           <Text style={styles.infoLabel}>Fare</Text>
           <Text style={styles.infoValue}>₱{route.totalFare.toFixed(2)}</Text>
         </View>
@@ -191,7 +199,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
         <View style={styles.divider} />
 
         <View style={styles.infoItem}>
-          <Text>T</Text>
+          <Text style={styles.infoIcon}>T</Text>
           <Text style={styles.infoLabel}>Time</Text>
           <Text style={styles.infoValue}>{formatTimeRange(route.totalTime)}</Text>
         </View>
@@ -199,7 +207,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
         <View style={styles.divider} />
 
         <View style={styles.infoItem}>
-          <Text>↔</Text>
+          <Text style={styles.infoIcon}>↔</Text>
           <Text style={styles.infoLabel}>Transfers</Text>
           <Text style={styles.infoValue}>
             {route.totalTransfers === 0
@@ -211,52 +219,47 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
         <View style={styles.divider} />
 
         <View style={styles.infoItem}>
-          <Text>ETA</Text>
+          <Text style={styles.infoIcon}>ETA</Text>
           <Text style={styles.infoLabel}>Arrive</Text>
           <Text style={styles.infoValue}>{formatArrivalTimeRange(route.totalTime)}</Text>
         </View>
       </View>
 
-      {!isSelected && (
-        <Text style={styles.tapHintText}>Tap to show modes & steps</Text>
-      )}
+      {!isSelected && <Text style={styles.tapHintText}>Tap to show modes & steps</Text>}
 
       {isSelected && (
         <View style={styles.segmentsSection}>
           <Text style={styles.stepsTitle}>Steps</Text>
           <View style={styles.stepsList}>
             <View pointerEvents="none" style={styles.stepsRail} />
-            {stepRows.map((row) => {
-              return (
-                <View key={row.key} style={styles.stepRow}>
-                  <View style={styles.stepLeft}>
-                    <View style={[styles.stepDot, { borderColor: row.color }]}>
-                      <View style={[styles.stepDotInner, { backgroundColor: row.color }]}>
-                        <Text style={styles.stepDotIcon}>{row.icon}</Text>
-                      </View>
+            {stepRows.map((row) => (
+              <View key={row.key} style={styles.stepRow}>
+                <View style={styles.stepLeft}>
+                  <View style={[styles.stepDot, { borderColor: row.color }]}>
+                    <View style={[styles.stepDotInner, { backgroundColor: row.color }]}>
+                      <Text style={styles.stepDotIcon}>{row.icon}</Text>
                     </View>
                   </View>
-
-                  <View style={styles.stepMain}>
-                    <View style={styles.stepTopRow}>
-                      <Text style={styles.stepTitle} numberOfLines={4}>
-                        {row.title}
-                      </Text>
-                      {!!row.metaRight && (
-                        <Text style={styles.stepMeta} numberOfLines={1}>
-                          {row.metaRight}
-                        </Text>
-                      )}
-                    </View>
-                    {!!row.subtitle && (
-                      <Text style={styles.stepSubtitle} numberOfLines={6}>
-                        {row.subtitle}
+                </View>
+                <View style={styles.stepMain}>
+                  <View style={styles.stepTopRow}>
+                    <Text style={styles.stepTitle} numberOfLines={4}>
+                      {row.title}
+                    </Text>
+                    {!!row.metaRight && (
+                      <Text style={styles.stepMeta} numberOfLines={1}>
+                        {row.metaRight}
                       </Text>
                     )}
                   </View>
+                  {!!row.subtitle && (
+                    <Text style={styles.stepSubtitle} numberOfLines={6}>
+                      {row.subtitle}
+                    </Text>
+                  )}
                 </View>
-              );
-            })}
+              </View>
+            ))}
           </View>
         </View>
       )}
@@ -265,7 +268,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
 
   if (onSelect) {
     return (
-      <TouchableOpacity onPress={onSelect} activeOpacity={0.7}>
+      <TouchableOpacity onPress={onSelect} activeOpacity={0.85}>
         {content}
       </TouchableOpacity>
     );
@@ -276,244 +279,197 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: '#ecf0f1',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.gray6,
+    ...shadows.small
   },
   containerSelected: {
-    borderColor: '#3498db',
-    backgroundColor: '#e3f2fd'
+    borderColor: colors.primary,
+    borderWidth: 2,
+    ...shadows.medium
   },
   rankBadge: {
     position: 'absolute',
-    top: 8,
-    left: 8,
-    backgroundColor: '#3498db',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4
+    top: 12,
+    left: 12,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.round,
+    zIndex: 1
   },
   rankText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold'
+    color: colors.textWhite,
+    fontSize: fontSize.sm,
+    fontWeight: '700'
   },
   scoreBadge: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: 12,
+    right: 12,
+    backgroundColor: colors.accent,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.round,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff3cd',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4
+    zIndex: 1
+  },
+  scoreIcon: {
+    color: colors.textWhite,
+    fontSize: fontSize.sm,
+    fontWeight: '700'
   },
   scoreText: {
-    color: '#856404',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginLeft: 4
+    color: colors.textWhite,
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+    marginLeft: spacing.xs
   },
   transportIcons: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
     justifyContent: 'center',
-    marginBottom: 10,
-    marginTop: 14,
-    flexWrap: 'wrap'
-  },
-  tapHintText: {
-    marginTop: 10,
-    fontSize: 12,
-    color: '#7f8c8d',
-    textAlign: 'center',
-    fontWeight: '600'
+    marginBottom: spacing.lg
   },
   iconContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 4
+    marginHorizontal: spacing.xs,
+    marginVertical: spacing.xs
   },
   transportBadge: {
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    alignItems: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.round,
     justifyContent: 'center',
-    minWidth: 50
+    alignItems: 'center'
   },
   transportIcon: {
-    fontSize: 24
+    fontSize: 18,
+    color: colors.textWhite
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12
+    backgroundColor: colors.gray7,
+    borderRadius: borderRadius.xl,
+    padding: spacing.md
   },
   infoItem: {
     flex: 1,
     alignItems: 'center'
   },
+  infoIcon: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    fontWeight: '700'
+  },
   infoLabel: {
-    fontSize: 10,
-    color: '#7f8c8d',
-    marginTop: 4
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: 2
   },
   infoValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2c3e50',
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    color: colors.textPrimary,
     marginTop: 2
   },
   divider: {
     width: 1,
-    backgroundColor: '#ecf0f1',
-    marginHorizontal: 4
+    backgroundColor: colors.gray6,
+    marginHorizontal: spacing.sm
+  },
+  tapHintText: {
+    textAlign: 'center',
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    fontSize: fontSize.sm
   },
   segmentsSection: {
-    borderTopWidth: 1,
-    borderTopColor: '#ecf0f1',
-    paddingTop: 14
+    marginTop: spacing.lg
   },
   stepsTitle: {
-    fontSize: 16,
+    fontSize: fontSize.lg,
     fontWeight: '700',
-    color: '#2c3e50',
-    marginBottom: 10
+    color: colors.textPrimary,
+    marginBottom: spacing.md
   },
   stepsList: {
-    marginBottom: 8,
     position: 'relative'
   },
   stepsRail: {
     position: 'absolute',
-    left: 24,
-    top: 10,
-    bottom: 10,
-    width: 3,
-    borderRadius: 2,
-    backgroundColor: '#1a73e8',
-    opacity: 0.35
+    left: 13,
+    top: 6,
+    bottom: 6,
+    width: 2,
+    backgroundColor: colors.gray6
   },
   stepRow: {
     flexDirection: 'row',
-    paddingVertical: 12
+    marginBottom: spacing.md
   },
   stepLeft: {
-    width: 50,
+    width: 34,
     alignItems: 'center'
   },
   stepDot: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#ffffff',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     borderWidth: 2,
+    backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center'
   },
   stepDotInner: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center'
   },
   stepDotIcon: {
-    color: '#ffffff',
-    fontSize: 18,
+    color: colors.textWhite,
+    fontSize: 11,
     fontWeight: '700'
   },
   stepMain: {
     flex: 1,
-    paddingRight: 4
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.gray6,
+    borderRadius: borderRadius.xl,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    ...shadows.small
   },
   stepTopRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 10
   },
   stepTitle: {
-    flex: 1,
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: '600',
-    color: '#2c3e50'
-  },
-  stepMeta: {
-    fontSize: 13,
-    color: '#34495e',
-    fontWeight: '600'
-  },
-  stepSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#7f8c8d'
-  },
-  stepText: {
-    fontSize: 11,
-    color: '#34495e',
-    marginBottom: 4
-  },
-  stepsDivider: {
-    height: 1,
-    backgroundColor: '#ecf0f1',
-    marginTop: 8,
-    marginBottom: 12
-  },
-  segment: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    position: 'relative',
-    paddingLeft: 8
-  },
-  segmentColorBar: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    borderRadius: 2
-  },
-  segmentBadge: {
-    borderRadius: 16,
-    padding: 6,
-    marginRight: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 32,
-    minHeight: 32
-  },
-  segmentIcon: {
-    fontSize: 18
-  },
-  segmentContent: {
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    color: colors.textPrimary,
     flex: 1
   },
-  segmentTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 2
+  stepMeta: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    fontWeight: '700'
   },
-  segmentText: {
-    fontSize: 11,
-    color: '#7f8c8d',
-    flexShrink: 1
+  stepSubtitle: {
+    fontSize: fontSize.sm,
+    color: colors.gray2,
+    marginTop: spacing.sm,
+    lineHeight: 16
   }
 });
 
 export default RouteCard;
-

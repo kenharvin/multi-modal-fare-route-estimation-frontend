@@ -1,14 +1,16 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Alert, Animated, Dimensions } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
 import { PrivateVehicleRoute } from '@/types';
 import { useApp } from '@context/AppContext';
 import { Button, ActivityIndicator } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { calculatePrivateVehicleRoute } from '@services/api';
 import MapViewComponent from '@components/MapViewComponent';
 import { formatArrivalTimeRange, formatTimeRange } from '@/utils/helpers';
+import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
 type PrivateVehicleResultsRouteProp = RouteProp<RootStackParamList, 'PrivateVehicleResults'>;
 type PrivateVehicleResultsNavigationProp = StackNavigationProp<RootStackParamList, 'PrivateVehicleResults'>;
 
@@ -19,6 +21,38 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const { isLoading, setIsLoading, setError } = useApp();
   
   const [routeResult, setRouteResult] = useState<PrivateVehicleRoute | null>(null);
+
+  const sheetProgress = useRef(new Animated.Value(0)).current; // 0=collapsed, 1=expanded
+  const isExpandedRef = useRef<boolean>(false);
+  const winH = Dimensions.get('window').height;
+  const sheetCollapsedH = Math.max(360, Math.round(winH * 0.52));
+  const sheetExpandedH = Math.max(560, Math.round(winH * 0.92));
+  const sheetHeight = sheetProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [sheetCollapsedH, sheetExpandedH]
+  });
+
+  const expandSheet = () => {
+    if (isExpandedRef.current) return;
+    isExpandedRef.current = true;
+    Animated.spring(sheetProgress, {
+      toValue: 1,
+      useNativeDriver: false,
+      speed: 18,
+      bounciness: 0
+    }).start();
+  };
+
+  const collapseSheet = () => {
+    if (!isExpandedRef.current) return;
+    isExpandedRef.current = false;
+    Animated.spring(sheetProgress, {
+      toValue: 0,
+      useNativeDriver: false,
+      speed: 18,
+      bounciness: 0
+    }).start();
+  };
 
   useEffect(() => {
     calculateRoute();
@@ -63,7 +97,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2196f3" />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Calculating route and fuel cost...</Text>
       </View>
     );
@@ -106,19 +140,9 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      {isMock && (
-        <View style={styles.warningCard}>
-          <Text style={styles.warningTitle}>Using fallback values</Text>
-          <Text style={styles.warningText}>
-            The app couldn't reach the private routing API, so the cost/time/distance shown here are mock values.
-          </Text>
-          {routeResult.errorMessage ? (
-            <Text style={styles.warningTextSmall}>{routeResult.errorMessage}</Text>
-          ) : null}
-        </View>
-      )}
-      <View style={styles.mapSection}>
+    <View style={styles.container}>
+      {/* Map as full-screen background */}
+      <View style={StyleSheet.absoluteFillObject}>
         <MapViewComponent
           origin={routeResult.origin}
           destination={routeResult.destination}
@@ -129,96 +153,147 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         />
       </View>
 
-      {hasLegBreakdown && (
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>Leg Breakdown</Text>
-
-          {(() => {
-            let cumulativeMin = 0;
-            return legs.map((leg, idx) => {
-              const dist = Number(leg.distanceKm || 0);
-              const timeMin = Number(leg.estimatedTimeMin || 0);
-              const fuelCostLeg = typeof leg.fuelCost === 'number' ? leg.fuelCost : (dist / (vehicle.fuelEfficiency || 1)) * fuelPrice;
-              const speedKph = computeLegSpeedKph(dist, timeMin);
-              cumulativeMin += timeMin;
-              const etaRange = formatArrivalTimeRange(Math.round(cumulativeMin));
-
-              const labelFrom = idx === 0 ? 'Origin' : `Stopover ${idx}`;
-              const labelTo = idx === legs.length - 1 ? 'Destination' : `Stopover ${idx + 1}`;
-
-              return (
-                <View key={leg.id || `leg-${idx}`} style={[styles.legCard, { borderLeftColor: legColors[idx % legColors.length] }]}>
-                  <Text style={styles.legTitle}>Leg {idx + 1}: {labelFrom} → {labelTo}</Text>
-                  <Text style={styles.legSubtitle} numberOfLines={2}>
-                    {leg.origin?.name} → {leg.destination?.name}
-                  </Text>
-
-                  <View style={styles.legMetricsRow}>
-                    <View style={styles.legMetricItem}>
-                      <Text style={styles.legMetricLabel}>Gas</Text>
-                      <Text style={styles.legMetricValue}>₱{Number(fuelCostLeg || 0).toFixed(2)}</Text>
-                    </View>
-                    <View style={styles.legMetricItem}>
-                      <Text style={styles.legMetricLabel}>Speed</Text>
-                      <Text style={styles.legMetricValue}>
-                        {speedKph ? `${speedKph.toFixed(1)} km/h` : '—'}
-                      </Text>
-                    </View>
-                    <View style={styles.legMetricItem}>
-                      <Text style={styles.legMetricLabel}>ETA</Text>
-                      <Text style={styles.legMetricValue}>{etaRange}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.legMetaRow}>
-                    <Text style={styles.legMetaText}>Distance: {dist.toFixed(1)} km</Text>
-                    <Text style={styles.legMetaText}>Time: {formatTimeRange(Math.round(timeMin))}</Text>
-                  </View>
-                </View>
-              );
-            });
-          })()}
+      {/* Bottom sheet: expands as user scrolls */}
+      <Animated.View style={[styles.sheet, { height: sheetHeight }]}>
+        <View style={styles.sheetHandleWrap}>
+          <View style={styles.sheetHandle} />
         </View>
-      )}
+
+        <Animated.ScrollView
+          style={styles.sheetScroll}
+          contentContainerStyle={styles.sheetContent}
+          showsVerticalScrollIndicator={false}
+          overScrollMode="never"
+          scrollEventThrottle={16}
+          onScrollBeginDrag={expandSheet}
+          onMomentumScrollEnd={(e) => {
+            const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+            if (y <= 0) collapseSheet();
+          }}
+          onScrollEndDrag={(e) => {
+            const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+            if (y <= 0) collapseSheet();
+          }}
+        >
+          {isMock && (
+            <View style={styles.warningCard}>
+              <Text style={styles.warningTitle}>Using fallback values</Text>
+              <Text style={styles.warningText}>
+                The app couldn't reach the private routing API, so the cost/time/distance shown here are mock values.
+              </Text>
+              {routeResult.errorMessage ? (
+                <Text style={styles.warningTextSmall}>{routeResult.errorMessage}</Text>
+              ) : null}
+            </View>
+          )}
+
+          {hasLegBreakdown && (
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryTitle}>Leg Breakdown</Text>
+
+              {(() => {
+                let cumulativeMin = 0;
+                return legs.map((leg, idx) => {
+                  const dist = Number(leg.distanceKm || 0);
+                  const timeMin = Number(leg.estimatedTimeMin || 0);
+                  const fuelCostLeg = typeof leg.fuelCost === 'number' ? leg.fuelCost : (dist / (vehicle.fuelEfficiency || 1)) * fuelPrice;
+                  const speedKph = computeLegSpeedKph(dist, timeMin);
+                  cumulativeMin += timeMin;
+                  const etaRange = formatArrivalTimeRange(Math.round(cumulativeMin));
+
+                  const labelFrom = idx === 0 ? 'Origin' : `Stopover ${idx}`;
+                  const labelTo = idx === legs.length - 1 ? 'Destination' : `Stopover ${idx + 1}`;
+
+                  return (
+                    <View key={leg.id || `leg-${idx}`} style={[styles.legCard, { borderLeftColor: legColors[idx % legColors.length] }]}>
+                      <Text style={styles.legTitle}>Leg {idx + 1}: {labelFrom} → {labelTo}</Text>
+                      <Text style={styles.legSubtitle} numberOfLines={2}>
+                        {leg.origin?.name} → {leg.destination?.name}
+                      </Text>
+
+                      <View style={styles.legMetricsRow}>
+                        <View style={styles.legMetricItem}>
+                          <View style={styles.metricLabelRow}>
+                            <MaterialCommunityIcons name="fuel" size={14} color={colors.textSecondary} />
+                            <Text style={styles.legMetricLabel}>Fuel</Text>
+                          </View>
+                          <Text style={styles.legMetricValue}>₱{Number(fuelCostLeg || 0).toFixed(2)}</Text>
+                        </View>
+                        <View style={styles.legMetricItem}>
+                          <Text style={styles.legMetricLabel}>Speed</Text>
+                          <Text style={styles.legMetricValue}>
+                            {speedKph ? `${speedKph.toFixed(1)} km/h` : '—'}
+                          </Text>
+                        </View>
+                        <View style={styles.legMetricItem}>
+                          <Text style={styles.legMetricLabel}>ETA</Text>
+                          <Text style={styles.legMetricValue}>{etaRange}</Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.legMetaRow}>
+                        <Text style={styles.legMetaText}>Distance: {dist.toFixed(1)} km</Text>
+                        <Text style={styles.legMetaText}>Time: {formatTimeRange(Math.round(timeMin))}</Text>
+                      </View>
+                    </View>
+                  );
+                });
+              })()}
+            </View>
+          )}
 
       <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>{hasLegBreakdown ? 'Complete Summary' : 'Trip Summary'}</Text>
-        
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryItem}>
-            <Text>GAS</Text>
+        <Text style={styles.summaryTitle}>Trip Overview</Text>
+
+        <View style={styles.overviewGrid}>
+          <View style={styles.overviewItem}>
+            <View style={[styles.iconCircle, { backgroundColor: colors.accentLight }]}>
+              <MaterialCommunityIcons name="fuel" size={22} color={colors.accentDark} />
+            </View>
             <Text style={styles.summaryLabel}>Fuel Cost</Text>
             <Text style={styles.summaryValue}>₱{routeResult.fuelCost.toFixed(2)}</Text>
           </View>
-          
-          <View style={styles.summaryItem}>
-            <Text>SPD</Text>
+
+          <View style={styles.overviewItem}>
+            <View style={[styles.iconCircle, { backgroundColor: colors.primaryLight }]}>
+              <MaterialCommunityIcons name="clock-outline" size={22} color={colors.primaryDark} />
+            </View>
+            <Text style={styles.summaryLabel}>Total Time</Text>
+            <Text style={styles.summaryValue}>{formatTimeRange(routeResult.estimatedTime)}</Text>
+          </View>
+
+          <View style={styles.overviewItem}>
+            <View style={[styles.iconCircle, { backgroundColor: colors.secondaryLight }]}>
+              <MaterialCommunityIcons name="map-marker-distance" size={22} color={colors.secondaryDark} />
+            </View>
             <Text style={styles.summaryLabel}>Distance</Text>
             <Text style={styles.summaryValue}>{routeResult.totalDistance.toFixed(1)} km</Text>
           </View>
-          
-          <View style={styles.summaryItem}>
-            <Text>T</Text>
-            <Text style={styles.summaryLabel}>Est. Time</Text>
-            <Text style={styles.summaryValue}>{formatTimeRange(routeResult.estimatedTime)}</Text>
+
+          <View style={styles.overviewItem}>
+            <View style={[styles.iconCircle, { backgroundColor: colors.gray7 }]}>
+              <MaterialCommunityIcons name="flag-checkered" size={22} color={colors.textPrimary} />
+            </View>
+            <Text style={styles.summaryLabel}>ETA</Text>
+            <Text style={styles.summaryValue}>{formatArrivalTimeRange(routeResult.estimatedTime)}</Text>
           </View>
         </View>
 
         <View style={styles.detailsSection}>
           <View style={styles.detailRow}>
-            <Text>GAS</Text>
+            <MaterialCommunityIcons name="fuel" size={18} color={colors.textSecondary} />
             <Text style={styles.detailLabel}>Fuel Consumption:</Text>
             <Text style={styles.detailValue}>{routeResult.fuelConsumption.toFixed(2)} L</Text>
           </View>
-          
+
           <View style={styles.detailRow}>
-            <Text>FUEL</Text>
+            <MaterialCommunityIcons name="gauge" size={18} color={colors.textSecondary} />
             <Text style={styles.detailLabel}>Fuel Efficiency:</Text>
             <Text style={styles.detailValue}>{vehicle.fuelEfficiency} km/L</Text>
           </View>
-          
+
           <View style={styles.detailRow}>
-            <Text>$</Text>
+            <MaterialCommunityIcons name="cash" size={18} color={colors.textSecondary} />
             <Text style={styles.detailLabel}>Fuel Price:</Text>
             <Text style={styles.detailValue}>₱{fuelPrice.toFixed(2)}/L</Text>
           </View>
@@ -229,7 +304,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         <Text style={styles.routeTitle}>Route Information</Text>
         
         <View style={styles.locationRow}>
-          <Text>*</Text>
+          <MaterialCommunityIcons name="ray-start" size={18} color={colors.primary} />
           <View style={styles.locationInfo}>
             <Text style={styles.locationLabel}>Origin</Text>
             <Text style={styles.locationName}>{routeResult.origin.name}</Text>
@@ -241,7 +316,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
             <Text style={styles.stopoversTitle}>Stopovers</Text>
             {routeResult.stopovers.map((stopover, index) => (
               <View key={stopover.id} style={styles.stopoverRow}>
-                <Text>PIN</Text>
+                <MaterialCommunityIcons name="map-marker" size={18} color={colors.textSecondary} />
                 <View style={styles.stopoverInfo}>
                   <Text style={styles.stopoverName}>{stopover.location.name}</Text>
                   <Text style={styles.stopoverType}>{stopover.type}</Text>
@@ -252,7 +327,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         )}
 
         <View style={styles.locationRow}>
-          <Text>*</Text>
+          <MaterialCommunityIcons name="flag-checkered" size={18} color={colors.error} />
           <View style={styles.locationInfo}>
             <Text style={styles.locationLabel}>Destination</Text>
             <Text style={styles.locationName}>{routeResult.destination.name}</Text>
@@ -273,150 +348,193 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         </View>
       )}
 
-      <View style={styles.footer}>
-        <Button
-          mode="contained"
-          onPress={handleSaveRoute}
-          style={styles.saveButton}
-          icon="content-save"
-        >
-          Save Route
-        </Button>
-      </View>
-    </ScrollView>
+          <View style={styles.footer}>
+            <Button
+              mode="contained"
+              onPress={handleSaveRoute}
+              style={styles.saveButton}
+              icon="content-save"
+            >
+              Save Route
+            </Button>
+          </View>
+        </Animated.ScrollView>
+      </Animated.View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5'
+    backgroundColor: colors.background
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5'
+    backgroundColor: colors.background
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#7f8c8d'
+    marginTop: spacing.md,
+    fontSize: fontSize.lg,
+    color: colors.textSecondary
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
-    backgroundColor: '#f5f5f5'
+    padding: spacing.xl,
+    backgroundColor: colors.background
   },
   emptyTitle: {
-    fontSize: 24,
+    fontSize: fontSize.title,
     fontWeight: 'bold',
-    color: '#2c3e50',
-    marginTop: 16,
-    marginBottom: 24
+    color: colors.textPrimary,
+    marginTop: spacing.md,
+    marginBottom: spacing.lg
   },
   retryButton: {
-    borderRadius: 8
+    borderRadius: borderRadius.lg
   },
-  mapSection: {
-    height: 250
+  sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.white,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    overflow: 'hidden',
+    ...shadows.large
   },
-  warningCard: {
-    backgroundColor: '#fff3cd',
-    borderColor: '#ffeeba',
-    borderWidth: 1,
-    padding: 14,
-    margin: 10,
-    borderRadius: 10
-  },
-  warningTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#856404',
-    marginBottom: 6
-  },
-  warningText: {
-    fontSize: 12,
-    color: '#856404'
-  },
-  warningTextSmall: {
-    fontSize: 11,
-    color: '#856404',
-    marginTop: 8
-  },
-  summaryCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    marginTop: 10
-  },
-  summaryTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 20
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 20
-  },
-  summaryItem: {
+  sheetHandleWrap: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
     alignItems: 'center'
   },
+  sheetHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.gray5
+  },
+  sheetScroll: {
+    flex: 1
+  },
+  sheetContent: {
+    paddingBottom: spacing.xxl
+  },
+  warningCard: {
+    backgroundColor: colors.accentLight,
+    borderColor: colors.accentLight,
+    borderWidth: 1,
+    padding: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    borderRadius: borderRadius.xl
+  },
+  warningTitle: {
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    color: colors.gray1,
+    marginBottom: spacing.xs
+  },
+  warningText: {
+    fontSize: fontSize.sm,
+    color: colors.gray1
+  },
+  warningTextSmall: {
+    fontSize: fontSize.xs,
+    color: colors.gray1,
+    marginTop: spacing.sm
+  },
+  summaryCard: {
+    backgroundColor: colors.white,
+    padding: spacing.lg,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.gray6,
+    ...shadows.small
+  },
+  summaryTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: 'bold',
+    color: colors.textPrimary,
+    marginBottom: spacing.lg
+  },
+  overviewGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: spacing.lg
+  },
+  overviewItem: {
+    width: '50%',
+    alignItems: 'center',
+    marginBottom: spacing.lg
+  },
+  iconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.sm
+  },
   summaryLabel: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginTop: 8
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.sm
   },
   summaryValue: {
-    fontSize: 18,
+    fontSize: fontSize.xl,
     fontWeight: 'bold',
-    color: '#2c3e50',
-    marginTop: 4
+    color: colors.textPrimary,
+    marginTop: spacing.xs
   },
   detailsSection: {
     borderTopWidth: 1,
-    borderTopColor: '#ecf0f1',
-    paddingTop: 16
+    borderTopColor: colors.gray6,
+    paddingTop: spacing.md
   },
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12
+    marginBottom: spacing.md
   },
   detailLabel: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginLeft: 12,
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+    marginLeft: spacing.md,
     flex: 1
   },
   detailValue: {
-    fontSize: 14,
+    fontSize: fontSize.md,
     fontWeight: '600',
-    color: '#2c3e50'
+    color: colors.textPrimary
   },
   legCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.xl,
     borderLeftWidth: 6,
-    borderLeftColor: '#1e88e5',
-    padding: 14,
-    marginBottom: 12,
+    borderLeftColor: colors.primary,
+    padding: spacing.md,
+    marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: '#ecf0f1'
+    borderColor: colors.gray6
   },
   legTitle: {
-    fontSize: 14,
+    fontSize: fontSize.md,
     fontWeight: '700',
-    color: '#2c3e50'
+    color: colors.textPrimary
   },
   legSubtitle: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginTop: 4,
-    marginBottom: 10
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md
   },
   legMetricsRow: {
     flexDirection: 'row',
@@ -426,125 +544,136 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center'
   },
+  metricLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs
+  },
   legMetricLabel: {
-    fontSize: 12,
-    color: '#7f8c8d'
+    fontSize: fontSize.sm,
+    color: colors.textSecondary
   },
   legMetricValue: {
-    fontSize: 16,
+    fontSize: fontSize.lg,
     fontWeight: '700',
-    color: '#2c3e50',
-    marginTop: 4
+    color: colors.textPrimary,
+    marginTop: spacing.xs
   },
   legMetaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 10
+    marginTop: spacing.md
   },
   legMetaText: {
-    fontSize: 12,
-    color: '#7f8c8d'
+    fontSize: fontSize.sm,
+    color: colors.textSecondary
   },
   routeCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    marginTop: 10
+    backgroundColor: colors.white,
+    padding: spacing.lg,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.gray6,
+    ...shadows.small
   },
   routeTitle: {
-    fontSize: 18,
+    fontSize: fontSize.xl,
     fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 16
+    color: colors.textPrimary,
+    marginBottom: spacing.md
   },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16
+    marginBottom: spacing.md
   },
   locationInfo: {
-    marginLeft: 12,
+    marginLeft: spacing.md,
     flex: 1
   },
   locationLabel: {
-    fontSize: 12,
-    color: '#7f8c8d'
+    fontSize: fontSize.sm,
+    color: colors.textSecondary
   },
   locationName: {
-    fontSize: 16,
+    fontSize: fontSize.lg,
     fontWeight: '600',
-    color: '#2c3e50',
+    color: colors.textPrimary,
     marginTop: 2
   },
   stopoversSection: {
-    marginBottom: 16,
-    paddingLeft: 12
+    marginBottom: spacing.md,
+    paddingLeft: spacing.md
   },
   stopoversTitle: {
-    fontSize: 14,
+    fontSize: fontSize.md,
     fontWeight: '600',
-    color: '#3498db',
-    marginBottom: 12
+    color: colors.primary,
+    marginBottom: spacing.md
   },
   stopoverRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    paddingLeft: 8
+    marginBottom: spacing.sm,
+    paddingLeft: spacing.sm
   },
   stopoverInfo: {
-    marginLeft: 12
+    marginLeft: spacing.md
   },
   stopoverName: {
-    fontSize: 14,
-    color: '#2c3e50'
+    fontSize: fontSize.md,
+    color: colors.textPrimary
   },
   stopoverType: {
-    fontSize: 12,
-    color: '#7f8c8d',
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
     textTransform: 'capitalize'
   },
   scoreCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    marginTop: 10,
+    backgroundColor: colors.white,
+    padding: spacing.lg,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
     alignItems: 'center'
   },
   scoreTitle: {
-    fontSize: 18,
+    fontSize: fontSize.xl,
     fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 16
+    color: colors.textPrimary,
+    marginBottom: spacing.md
   },
   scoreCircle: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#e3f2fd',
+    backgroundColor: colors.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12
+    marginBottom: spacing.md
   },
   scoreValue: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: '#2196f3'
+    color: colors.primary
   },
   scoreLabel: {
-    fontSize: 16,
-    color: '#7f8c8d'
+    fontSize: fontSize.lg,
+    color: colors.textSecondary
   },
   scoreDescription: {
-    fontSize: 12,
-    color: '#7f8c8d',
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
     textAlign: 'center'
   },
   footer: {
-    padding: 20,
-    paddingBottom: 40
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl
   },
   saveButton: {
-    borderRadius: 8,
-    backgroundColor: '#27ae60'
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.secondary
   }
 });
 

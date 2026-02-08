@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList } from 'react-native';
 import { Location } from '@/types';
 import { searchStops } from '@services/api';
+import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
 interface DestinationInputProps {
   label: string;
   value: Location | null;
@@ -106,69 +107,67 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16
+    marginBottom: spacing.lg
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 8
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    letterSpacing: 0.3
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
-    borderColor: '#ecf0f1',
-    paddingHorizontal: 12,
-    paddingVertical: 4
+    borderColor: colors.gray6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    ...shadows.small
   },
   icon: {
     marginRight: 8
   },
   input: {
     flex: 1,
-    fontSize: 16,
-    color: '#2c3e50',
-    paddingVertical: 12
+    fontSize: fontSize.lg,
+    color: colors.textPrimary,
+    paddingVertical: spacing.md
   },
   clearButton: {
-    padding: 4
+    padding: spacing.xs
   },
   suggestionsContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    marginTop: 4,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.xl,
+    marginTop: spacing.sm,
     borderWidth: 1,
-    borderColor: '#ecf0f1',
+    borderColor: colors.gray6,
     maxHeight: 200,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3
+    ...shadows.medium
   },
   suggestionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    padding: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#ecf0f1'
+    borderBottomColor: colors.gray6
   },
   suggestionInfo: {
     flex: 1,
-    marginLeft: 12
+    marginLeft: spacing.md
   },
   suggestionName: {
-    fontSize: 14,
-    color: '#2c3e50',
+    fontSize: fontSize.md,
+    color: colors.textPrimary,
     fontWeight: '500'
   },
   suggestionAddress: {
-    fontSize: 12,
-    color: '#7f8c8d',
-    marginTop: 2
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.xs
   }
 });
 

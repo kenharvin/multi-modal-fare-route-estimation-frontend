@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
+import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
 
 type WelcomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Welcome'>;
 
@@ -38,23 +39,23 @@ const WelcomeScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    padding: 20
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.lg
   },
   header: {
-    marginTop: 60,
+    marginTop: spacing.xxl,
     alignItems: 'center'
   },
   title: {
-    fontSize: 28,
+    fontSize: fontSize.heading,
     fontWeight: 'bold',
-    color: '#2c3e50',
+    color: colors.textPrimary,
     textAlign: 'center'
   },
   subtitle: {
-    fontSize: 16,
-    color: '#7f8c8d',
-    marginTop: 10,
+    fontSize: fontSize.lg,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
     textAlign: 'center'
   },
   content: {
@@ -64,33 +65,33 @@ const styles = StyleSheet.create({
   },
   iconContainer: {
     width: '100%',
-    height: 300,
+    height: 280,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.xl,
+    paddingHorizontal: spacing.lg,
+    ...shadows.small
   },
   iconText: {
     fontSize: 32,
-    color: '#3498db',
+    color: colors.primary,
     fontWeight: '600',
   },
   footer: {
-    marginBottom: 40
+    marginBottom: spacing.xxl
   },
   button: {
-    backgroundColor: '#3498db',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.xl,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5
+    ...shadows.medium
   },
   buttonText: {
-    color: '#fff',
-    fontSize: 18,
+    color: colors.textWhite,
+    fontSize: fontSize.xl,
     fontWeight: '600'
   }
 });
