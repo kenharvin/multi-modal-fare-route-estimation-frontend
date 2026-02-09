@@ -28,12 +28,14 @@ const resolveApiBaseUrl = (): string => {
 
 export const API_BASE_URL = resolveApiBaseUrl();
 export const ROUTE_TIMEOUT_MS = Number(process.env.EXPO_PUBLIC_ROUTE_TIMEOUT_MS || 180000); // 3 minutes default
+const API_KEY = process.env.EXPO_PUBLIC_API_KEY;
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: ROUTE_TIMEOUT_MS,
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    ...(API_KEY ? { 'X-API-Key': API_KEY } : {})
   }
 });
 
@@ -65,6 +67,12 @@ apiClient.interceptors.request.use(
   (config) => {
     console.log('API Request:', config.method?.toUpperCase(), config.url);
     console.log('Base URL:', API_BASE_URL);
+
+    // Attach API key if configured (no login required).
+    if (API_KEY) {
+      config.headers = config.headers || {};
+      (config.headers as any)['X-API-Key'] = API_KEY;
+    }
 
     return config;
   },
