@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import * as ExpoLocation from 'expo-location';
 import { Location, Coordinates } from '@/types';
 
@@ -21,28 +21,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [selectedOrigin, setSelectedOrigin] = useState<Location | null>(null);
   const [selectedDestination, setSelectedDestination] = useState<Location | null>(null);
 
-  useEffect(() => {
-    requestLocationPermission();
-  }, []);
-
-  const requestLocationPermission = async (): Promise<boolean> => {
-    try {
-      const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
-      const granted = status === 'granted';
-      setLocationPermission(granted);
-      
-      if (granted) {
-        getCurrentLocation();
-      }
-      
-      return granted;
-    } catch (error) {
-      console.error('Error requesting location permission:', error);
-      return false;
-    }
-  };
-
-  const getCurrentLocation = async (): Promise<Coordinates | null> => {
+  const getCurrentLocation = useCallback(async (): Promise<Coordinates | null> => {
     try {
       const location = await ExpoLocation.getCurrentPositionAsync({
         accuracy: ExpoLocation.Accuracy.High
@@ -59,7 +38,29 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
       console.error('Error getting current location:', error);
       return null;
     }
-  };
+
+  }, []);
+
+  const requestLocationPermission = useCallback(async (): Promise<boolean> => {
+    try {
+      const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
+      const granted = status === 'granted';
+      setLocationPermission(granted);
+
+      if (granted) {
+        void getCurrentLocation();
+      }
+
+      return granted;
+    } catch (error) {
+      console.error('Error requesting location permission:', error);
+      return false;
+    }
+  }, [getCurrentLocation]);
+
+  useEffect(() => {
+    void requestLocationPermission();
+  }, [requestLocationPermission]);
 
   return (
     <LocationContext.Provider

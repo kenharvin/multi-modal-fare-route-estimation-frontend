@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
+import { useRoute, RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '@navigation/types';
 import { Route, TripPlan, Location, PublicTransportPreference } from '@/types';
-import { useLocation } from '@context/LocationContext';
 import { useApp } from '@context/AppContext';
 import DestinationInput from '@components/DestinationInput';
 import TripSummary from '@components/TripSummary';
@@ -13,10 +11,8 @@ import MapViewComponent from '@components/MapViewComponent';
 import { Button, ActivityIndicator } from 'react-native-paper';
 import { fetchRoutes, fetchRouteGeometry } from '@services/api';
 type TripPlanRouteProp = RouteProp<RootStackParamList, 'TripPlan'>;
-type TripPlanNavigationProp = StackNavigationProp<RootStackParamList, 'TripPlan'>;
 
 const TripPlanScreen: React.FC = () => {
-  const navigation = useNavigation<TripPlanNavigationProp>();
   const route = useRoute<TripPlanRouteProp>();
   const { initialRoute } = route.params;
   const { setIsLoading, isLoading } = useApp();
@@ -84,7 +80,7 @@ const TripPlanScreen: React.FC = () => {
       if (routes.length > 0) {
         setSelectedNewRoute(routes[0]);
       }
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to fetch routes for new destination');
     } finally {
       setIsLoading(false);

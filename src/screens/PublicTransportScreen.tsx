@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput 
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
-import { PublicTransportPreference, Location } from '@/types';
+import { PublicTransportPreference } from '@/types';
 import { useLocation } from '@context/LocationContext';
 import { useApp } from '@context/AppContext';
 import DestinationInput from '@components/DestinationInput';

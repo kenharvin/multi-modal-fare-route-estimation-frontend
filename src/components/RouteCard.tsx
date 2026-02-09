@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Route, TransportType } from '@/types';
 import { getTransportStyle } from '@/utils/transportUtils';
-import { formatArrivalTimeRange, formatTimeRange } from '@/utils/helpers';
+import { formatArrivalTimeRange, formatCurrency, formatTimeRange } from '@/utils/helpers';
 import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
 
 interface RouteCardProps {
@@ -189,39 +189,35 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
         </View>
       )}
 
-      <View style={styles.infoRow}>
-        <View style={styles.infoItem}>
-          <Text style={styles.infoIcon}>$</Text>
+      <View style={styles.infoGrid}>
+        <View style={styles.infoCell}>
           <Text style={styles.infoLabel}>Fare</Text>
-          <Text style={styles.infoValue}>₱{route.totalFare.toFixed(2)}</Text>
+          <Text style={styles.infoValue} numberOfLines={1}>
+            {formatCurrency(route.totalFare)}
+          </Text>
         </View>
 
-        <View style={styles.divider} />
-
-        <View style={styles.infoItem}>
-          <Text style={styles.infoIcon}>T</Text>
+        <View style={styles.infoCell}>
           <Text style={styles.infoLabel}>Time</Text>
-          <Text style={styles.infoValue}>{formatTimeRange(route.totalTime)}</Text>
+          <Text style={styles.infoValue} numberOfLines={1}>
+            {formatTimeRange(route.totalTime)}
+          </Text>
         </View>
 
-        <View style={styles.divider} />
-
-        <View style={styles.infoItem}>
-          <Text style={styles.infoIcon}>↔</Text>
+        <View style={styles.infoCell}>
           <Text style={styles.infoLabel}>Transfers</Text>
-          <Text style={styles.infoValue}>
+          <Text style={styles.infoValue} numberOfLines={1}>
             {route.totalTransfers === 0
               ? 'None'
               : `${route.totalTransfers} transfer${route.totalTransfers === 1 ? '' : 's'}`}
           </Text>
         </View>
 
-        <View style={styles.divider} />
-
-        <View style={styles.infoItem}>
-          <Text style={styles.infoIcon}>ETA</Text>
-          <Text style={styles.infoLabel}>Arrive</Text>
-          <Text style={styles.infoValue}>{formatArrivalTimeRange(route.totalTime)}</Text>
+        <View style={styles.infoCell}>
+          <Text style={styles.infoLabel}>Arrive (ETA)</Text>
+          <Text style={styles.infoValue} numberOfLines={1}>
+            {formatArrivalTimeRange(route.totalTime)}
+          </Text>
         </View>
       </View>
 
@@ -351,21 +347,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: colors.textWhite
   },
-  infoRow: {
+  infoGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
     backgroundColor: colors.gray7,
     borderRadius: borderRadius.xl,
     padding: spacing.md
   },
-  infoItem: {
-    flex: 1,
-    alignItems: 'center'
-  },
-  infoIcon: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    fontWeight: '700'
+  infoCell: {
+    width: '50%',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.xs
   },
   infoLabel: {
     fontSize: fontSize.xs,
@@ -377,11 +369,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textPrimary,
     marginTop: 2
-  },
-  divider: {
-    width: 1,
-    backgroundColor: colors.gray6,
-    marginHorizontal: spacing.sm
   },
   tapHintText: {
     textAlign: 'center',

@@ -29,8 +29,6 @@ export const useTripPlanner = (initialRoute?: Route): UseTripPlannerResult => {
 
   const addRoute = (route: Route) => {
     if (!tripPlan) return;
-
-    const lastDestination = tripPlan.destinations[tripPlan.destinations.length - 1];
     const newDestination = route.segments[route.segments.length - 1].destination;
 
     setTripPlan({

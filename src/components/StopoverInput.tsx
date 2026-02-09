@@ -75,7 +75,7 @@ const StopoverInput: React.FC<StopoverInputProps> = ({
     <View style={styles.container}>
       {stopovers.length > 0 && (
         <View style={styles.stopoversList}>
-          {stopovers.map((stopover, index) => (
+          {stopovers.map((stopover) => (
             <View key={stopover.id} style={styles.stopoverCard}>
               <View style={styles.stopoverHeader}>
                 <Text style={{fontSize: 24}}>{stopover.type.charAt(0).toUpperCase()}</Text>

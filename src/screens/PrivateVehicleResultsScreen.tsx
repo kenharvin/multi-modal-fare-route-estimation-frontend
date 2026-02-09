@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Alert, Animated, Dimensions } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -54,11 +54,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     }).start();
   };
 
-  useEffect(() => {
-    calculateRoute();
-  }, []);
-
-  const calculateRoute = async () => {
+  const calculateRoute = useCallback(async () => {
     try {
       setIsLoading(true);
       const result = await calculatePrivateVehicleRoute(
@@ -70,13 +66,17 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         preferences
       );
       setRouteResult(result);
-    } catch (error) {
+    } catch {
       setError('Failed to calculate route. Please try again.');
       Alert.alert('Error', 'Failed to calculate route');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [destination, fuelPrice, origin, preferences, setError, setIsLoading, stopovers, vehicle]);
+
+  useEffect(() => {
+    void calculateRoute();
+  }, [calculateRoute]);
 
   const handleSaveRoute = () => {
     Alert.alert(
@@ -314,7 +314,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         {routeResult.stopovers.length > 0 && (
           <View style={styles.stopoversSection}>
             <Text style={styles.stopoversTitle}>Stopovers</Text>
-            {routeResult.stopovers.map((stopover, index) => (
+            {routeResult.stopovers.map((stopover) => (
               <View key={stopover.id} style={styles.stopoverRow}>
                 <MaterialCommunityIcons name="map-marker" size={18} color={colors.textSecondary} />
                 <View style={styles.stopoverInfo}>

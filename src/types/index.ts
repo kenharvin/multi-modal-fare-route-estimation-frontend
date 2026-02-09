@@ -50,7 +50,7 @@ export interface RouteSegment {
   destinationNode?: string;
   mode?: string;
   /** Exact planned node sequence for this leg (from backend RouteLeg.path_nodes). */
-  pathNodes?: Array<string | number>;
+  pathNodes?: (string | number)[];
 }
 
 // Complete route with multiple segments

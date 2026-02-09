@@ -7,39 +7,24 @@ import { getPreviewPolyline } from '@/services/api';
 import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 
-// Conditionally import MapView for native platforms
-let MapView: any = null;
-let Marker: any = null;
-let Polyline: any = null;
-let UrlTile: any = null;
-let Callout: any = null;
-
 // Web map imports
 let MapContainer: any = null;
 let TileLayer: any = null;
 let LeafletMarker: any = null;
 let LeafletPolyline: any = null;
 let Popup: any = null;
-let CircleMarker: any = null;
 
-if (Platform.OS !== 'web') {
-  const MapModule = require('react-native-maps');
-  MapView = MapModule.default;
-  Marker = MapModule.Marker;
-  Polyline = MapModule.Polyline;
-  UrlTile = MapModule.UrlTile;
-  Callout = MapModule.Callout;
-} else {
+if (Platform.OS === 'web') {
   // Import Leaflet for web
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const LeafletModule = require('react-leaflet');
     MapContainer = LeafletModule.MapContainer;
     TileLayer = LeafletModule.TileLayer;
     LeafletMarker = LeafletModule.Marker;
     LeafletPolyline = LeafletModule.Polyline;
     Popup = LeafletModule.Popup;
-    CircleMarker = LeafletModule.CircleMarker;
-  } catch (e) {
+  } catch {
     console.log('Leaflet not available');
   }
 }
@@ -95,19 +80,11 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   showRoute = false,
   showTransferMarkers = true
 }) => {
-  const [region, setRegion] = useState({
-    latitude: 14.5995, // Manila default
-    longitude: 120.9842,
-    latitudeDelta: 0.1,
-    longitudeDelta: 0.1
-  });
-
   const [selectingOrigin, setSelectingOrigin] = useState<boolean>(false);
   const [selectingDestination, setSelectingDestination] = useState<boolean>(false);
   const [selectingStopover, setSelectingStopover] = useState<boolean>(false);
   const [previewCoords, setPreviewCoords] = useState<{ latitude: number; longitude: number }[] | null>(null);
-  const [previewSource, setPreviewSource] = useState<string | null>(null);
-  const [legendVisible, setLegendVisible] = useState<boolean>(false);
+  const [legendVisible, setLegendVisible] = useState<boolean>(Platform.OS === 'web');
 
   // Allow parent to programmatically arm a selection mode (e.g., pick stopover from map).
   useEffect(() => {
@@ -131,133 +108,55 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     }
   }, [autoSelectMode]);
 
-  // Calculate bounding box for route to fit all coordinates
-  useEffect(() => {
-    if (route && route.segments.length > 0) {
-      const allCoords: { latitude: number; longitude: number }[] = [];
-      
-      route.segments.forEach(segment => {
-        // Helper to filter invalid coords (avoid 0,0)
-        const isValid = (c: { latitude: number; longitude: number }) => {
-          return typeof c?.latitude === 'number' && typeof c?.longitude === 'number' && !(c.latitude === 0 && c.longitude === 0);
-        };
-        if (segment.geometry && segment.geometry.length > 0) {
-          allCoords.push(...segment.geometry.filter(isValid));
-        } else {
-          if (isValid(segment.origin.coordinates)) allCoords.push(segment.origin.coordinates);
-          if (isValid(segment.destination.coordinates)) allCoords.push(segment.destination.coordinates);
-        }
-      });
-
-      if (allCoords.length > 0) {
-        const lats = allCoords.map(c => c.latitude);
-        const lons = allCoords.map(c => c.longitude);
-        
-        const minLat = Math.min(...lats);
-        const maxLat = Math.max(...lats);
-        const minLon = Math.min(...lons);
-        const maxLon = Math.max(...lons);
-        
-        const centerLat = (minLat + maxLat) / 2;
-        const centerLon = (minLon + maxLon) / 2;
-        const latDelta = (maxLat - minLat) * 1.3; // Add 30% padding
-        const lonDelta = (maxLon - minLon) * 1.3;
-        
-        setRegion({
-          latitude: centerLat,
-          longitude: centerLon,
-          latitudeDelta: Math.max(latDelta, 0.01),
-          longitudeDelta: Math.max(lonDelta, 0.01)
-        });
-      }
-    } else if (polylines && polylines.length > 0) {
-      const all = polylines
-        .flatMap((p) => (Array.isArray(p?.coords) ? p.coords : []))
-        .filter((c) => typeof c?.latitude === 'number' && typeof c?.longitude === 'number' && !(c.latitude === 0 && c.longitude === 0));
-
-      if (all.length > 0) {
-        const lats = all.map((c) => c.latitude);
-        const lons = all.map((c) => c.longitude);
-        const minLat = Math.min(...lats);
-        const maxLat = Math.max(...lats);
-        const minLon = Math.min(...lons);
-        const maxLon = Math.max(...lons);
-
-        const centerLat = (minLat + maxLat) / 2;
-        const centerLon = (minLon + maxLon) / 2;
-        const latDelta = (maxLat - minLat) * 1.3;
-        const lonDelta = (maxLon - minLon) * 1.3;
-
-        setRegion({
-          latitude: centerLat,
-          longitude: centerLon,
-          latitudeDelta: Math.max(latDelta, 0.01),
-          longitudeDelta: Math.max(lonDelta, 0.01)
-        });
-      }
-    } else if (polylineCoords && polylineCoords.length > 0) {
-      const valid = polylineCoords.filter(c => typeof c?.latitude === 'number' && typeof c?.longitude === 'number' && !(c.latitude === 0 && c.longitude === 0));
-      if (valid.length > 0) {
-        const lats = valid.map(c => c.latitude);
-        const lons = valid.map(c => c.longitude);
-        const minLat = Math.min(...lats);
-        const maxLat = Math.max(...lats);
-        const minLon = Math.min(...lons);
-        const maxLon = Math.max(...lons);
-
-        const centerLat = (minLat + maxLat) / 2;
-        const centerLon = (minLon + maxLon) / 2;
-        const latDelta = (maxLat - minLat) * 1.3;
-        const lonDelta = (maxLon - minLon) * 1.3;
-
-        setRegion({
-          latitude: centerLat,
-          longitude: centerLon,
-          latitudeDelta: Math.max(latDelta, 0.01),
-          longitudeDelta: Math.max(lonDelta, 0.01)
-        });
-      }
-    } else if (origin) {
-      setRegion({
-        ...origin.coordinates,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05
-      });
-    }
-  }, [route, origin, polylineCoords, polylines]);
-
   // Fetch preview polyline when origin and destination are set but no computed route
+  const originLat = origin?.coordinates?.latitude;
+  const originLon = origin?.coordinates?.longitude;
+  const destLat = destination?.coordinates?.latitude;
+  const destLon = destination?.coordinates?.longitude;
+  const hasRoute = !!route;
+  const hasPolylineCoords = !!(polylineCoords && polylineCoords.length >= 2);
+  const polylinesLen = polylines?.length || 0;
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const hasPolylines = !!(polylines && polylines.some((p) => Array.isArray(p?.coords) && p.coords.length >= 2));
-      if (route || hasPolylines || (polylineCoords && polylineCoords.length >= 2) || !origin || !destination) {
+      if (
+        hasRoute ||
+        hasPolylines ||
+        hasPolylineCoords ||
+        typeof originLat !== 'number' ||
+        typeof originLon !== 'number' ||
+        typeof destLat !== 'number' ||
+        typeof destLon !== 'number'
+      ) {
         setPreviewCoords(null);
-        setPreviewSource(null);
         return;
       }
+
+      const originPoint = { latitude: originLat, longitude: originLon };
+      const destinationPoint = { latitude: destLat, longitude: destLon };
       try {
-        const { coords, source } = await getPreviewPolyline(origin.coordinates, destination.coordinates);
+        const { coords } = await getPreviewPolyline(originPoint, destinationPoint);
         if (!cancelled) {
           setPreviewCoords(coords);
-          setPreviewSource(source);
         }
-      } catch (e) {
+      } catch {
         if (!cancelled) {
-          setPreviewCoords([origin.coordinates, destination.coordinates]);
-          setPreviewSource('direct');
+          setPreviewCoords([originPoint, destinationPoint]);
         }
       }
     })();
     return () => { cancelled = true; };
   }, [
-    origin?.coordinates.latitude,
-    origin?.coordinates.longitude,
-    destination?.coordinates.latitude,
-    destination?.coordinates.longitude,
-    !!route,
-    !!(polylineCoords && polylineCoords.length >= 2),
-    !!(polylines && polylines.length)
+    originLat,
+    originLon,
+    destLat,
+    destLon,
+    hasRoute,
+    hasPolylineCoords,
+    polylinesLen,
+    polylines
   ]);
 
   const normalizeTransportType = (t?: string) => (t ?? '').trim().toLowerCase();
@@ -289,19 +188,6 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     if (nt === 'uv' || nt === 'uvexpress' || nt === 'uv express' || nt === 'uv_express') return 'UV Express';
     if (nt === 'walk' || nt === 'walking') return 'Walk';
     return nt.toUpperCase();
-  };
-
-  const getModeIconName = (t?: string) => {
-    const nt = normalizeTransportType(t);
-    if (nt === 'lrt' || nt === 'mrt' || nt === 'pnr' || nt === 'train') return 'train';
-    if (nt === 'bus') return 'bus';
-    if (nt === 'jeep' || nt === 'jeepney') return 'bus';
-    if (nt === 'uv' || nt === 'uvexpress' || nt === 'uv express' || nt === 'uv_express') return 'car';
-    if (nt === 'taxi') return 'car';
-    if (nt === 'tricycle') return 'bicycle';
-    if (nt === 'walk' || nt === 'walking' || nt === 'foot' || nt === 'pedestrian') return 'walk';
-    // Fallback icon
-    return 'swap-horizontal';
   };
 
   const getModeEmoji = (t?: string) => {
@@ -423,9 +309,9 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
 
   const getSegmentEndpointMarkers = () => {
     if (!route || !Array.isArray(route.segments) || route.segments.length === 0) {
-      return [] as Array<{ id: string; coordinate: { latitude: number; longitude: number }; modeType?: string; kind: 'start' | 'end' }>;
+      return [] as { id: string; coordinate: { latitude: number; longitude: number }; modeType?: string; kind: 'start' | 'end' }[];
     }
-    const out: Array<{ id: string; coordinate: { latitude: number; longitude: number }; modeType?: string; kind: 'start' | 'end' }> = [];
+    const out: { id: string; coordinate: { latitude: number; longitude: number }; modeType?: string; kind: 'start' | 'end' }[] = [];
     for (const seg of route.segments) {
       const s = getSegmentBoardCoord(seg);
       const e = getSegmentAlightCoord(seg);
@@ -450,14 +336,14 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
 
   const getTransferMarkers = () => {
     if (!route || !Array.isArray(route.segments) || route.segments.length < 2) {
-      return [] as Array<{
+      return [] as {
         coordinate: { latitude: number; longitude: number };
         number: number;
         kind: 'alight' | 'board';
         fromType: string;
         toType: string;
         modeType: string;
-      }>;
+      }[];
     }
 
     const segs = route.segments.filter(Boolean);
@@ -493,24 +379,24 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     }
 
     if (transferIndices.length === 0) {
-      return [] as Array<{
+      return [] as {
         coordinate: { latitude: number; longitude: number };
         number: number;
         kind: 'alight' | 'board';
         fromType: string;
         toType: string;
         modeType: string;
-      }>;
+      }[];
     }
 
-    const markers: Array<{
+    const markers: {
       coordinate: { latitude: number; longitude: number };
       number: number;
       kind: 'alight' | 'board';
       fromType: string;
       toType: string;
       modeType: string;
-    }> = [];
+    }[] = [];
     const seen = new Set<string>();
     let transferNo = 0;
 
@@ -565,6 +451,8 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     return markers;
   };
 
+  let webReturn: React.ReactElement | null = null;
+
   // Web map implementation with Leaflet
   if (Platform.OS === 'web' && MapContainer) {
     const center: [number, number] = [
@@ -574,6 +462,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
 
     let makeTransferIcon: ((n: number, kind: 'alight' | 'board', modeType: string) => any) | null = null;
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const L = require('leaflet');
       makeTransferIcon = (n: number, kind: 'alight' | 'board', modeType: string) => {
         const bg = kind === 'alight' ? '#2980b9' : '#27ae60';
@@ -615,6 +504,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
 
     let makeEndDotIcon: ((modeType?: string) => any) | null = null;
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const L = require('leaflet');
       makeEndDotIcon = (modeType?: string) => {
         const bg = getTransportColorSafe(modeType);
@@ -640,6 +530,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
 
     let makeEndpointIcon: ((modeType?: string) => any) | null = null;
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const L = require('leaflet');
       makeEndpointIcon = (modeType?: string) => {
         const bg = getTransportColorSafe(modeType);
@@ -670,7 +561,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       makeEndpointIcon = null;
     }
 
-    return (
+    webReturn = (
       <View style={styles.container}>
         <div style={{ width: '100%', height: '100%' }}>
           <MapContainer
@@ -696,7 +587,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
               <LeafletMarker position={[destination.coordinates.latitude, destination.coordinates.longitude]}>
               </LeafletMarker>
             )}
-            {stopovers.map((stopover, index) => (
+            {stopovers.map((stopover) => (
               <LeafletMarker
                 key={stopover.id}
                 position={[stopover.location.coordinates.latitude, stopover.location.coordinates.longitude]}
@@ -877,13 +768,29 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
             )}
           </MapContainer>
         </div>
+
+        {/* Legend toggle + legend for web Leaflet */}
+        {route && route.segments.length > 0 && (
+          <View style={styles.legendToggleWrap}>
+            <TouchableOpacity
+              style={styles.legendToggleButton}
+              onPress={() => setLegendVisible((v) => !v)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name={legendVisible ? 'close' : 'information-circle-outline'} size={16} color="#2c3e50" />
+              <Text style={styles.legendToggleText}>{legendVisible ? 'Hide legend' : 'Show legend'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {legendVisible && route && route.segments.length > 0 && <MapLegend />}
       </View>
     );
   }
 
   // Web fallback if Leaflet not available
-  if (Platform.OS === 'web') {
-    return (
+  if (Platform.OS === 'web' && !webReturn) {
+    webReturn = (
       <View style={styles.webMapContainer}>
         <View style={styles.webMapPlaceholder}>
           <Text>MAP</Text>
@@ -905,44 +812,6 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       </View>
     );
   }
-
-  const handleMapPress = async (event: any) => {
-    const { coordinate } = event.nativeEvent;
-    
-    if (selectingOrigin && onOriginSelect) {
-      const location: Location = {
-        name: `Location at ${coordinate.latitude.toFixed(4)}, ${coordinate.longitude.toFixed(4)}`,
-        coordinates: coordinate,
-        address: 'Selected from map'
-      };
-      onOriginSelect(location);
-      setSelectingOrigin(false);
-    } else if (selectingDestination && onDestinationSelect) {
-      const location: Location = {
-        name: `Location at ${coordinate.latitude.toFixed(4)}, ${coordinate.longitude.toFixed(4)}`,
-        coordinates: coordinate,
-        address: 'Selected from map'
-      };
-      onDestinationSelect(location);
-      setSelectingDestination(false);
-    } else if (selectingStopover && onStopoverSelect) {
-      const location: Location = {
-        name: `Location at ${coordinate.latitude.toFixed(4)}, ${coordinate.longitude.toFixed(4)}`,
-        coordinates: coordinate,
-        address: 'Selected from map'
-      };
-      onStopoverSelect(location);
-      setSelectingStopover(false);
-    }
-  };
-
-  const getRouteCoordinates = () => {
-    const coordinates = [];
-    if (origin) coordinates.push(origin.coordinates);
-    stopovers.forEach(stopover => coordinates.push(stopover.location.coordinates));
-    if (destination) coordinates.push(destination.coordinates);
-    return coordinates;
-  };
 
   // Native (Android/iOS) map: Leaflet inside WebView using OpenStreetMap tiles (no Google Maps key required).
   // This keeps route results identical; only the basemap rendering changes.
@@ -1117,6 +986,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       markers,
       polylines: polylinesOut
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     origin,
     destination,
@@ -1288,6 +1158,10 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       // ignore
     }
   };
+
+  if (webReturn) {
+    return webReturn;
+  }
 
   return (
     <View style={styles.container}>

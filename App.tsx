@@ -11,6 +11,7 @@ import { borderRadius, colors } from './src/utils/theme';
 
 // Import Leaflet CSS for web
 if (Platform.OS === 'web') {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('leaflet/dist/leaflet.css');
 }
 

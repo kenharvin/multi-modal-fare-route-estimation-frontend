@@ -27,6 +27,10 @@ const MapLegend: React.FC = () => {
           );
         })}
       </View>
+      <View style={styles.transferLegend}>
+        <Text style={styles.transferTitle}>Transfer Markers</Text>
+        <Text style={styles.transferText}>nA = Alight • nB = Board</Text>
+      </View>
     </View>
   );
 };
@@ -36,6 +40,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 16,
     left: 16,
+    zIndex: 50,
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 12,
     padding: 12,
@@ -43,7 +48,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
-    elevation: 5
+    elevation: 8
   },
   title: {
     fontSize: 12,
@@ -76,6 +81,19 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#2c3e50',
     fontWeight: '500'
+  },
+  transferLegend: {
+    marginTop: 10
+  },
+  transferTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2c3e50',
+    marginBottom: 2
+  },
+  transferText: {
+    fontSize: 10,
+    color: '#2c3e50'
   }
 });
 

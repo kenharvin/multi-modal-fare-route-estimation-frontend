@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Alert, Animated, Dimensions } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -58,14 +58,7 @@ const RouteResultsScreen: React.FC = () => {
     }).start();
   };
 
-  useEffect(() => {
-    // Guard against duplicate fetches caused by re-mounts or fast refresh
-    if (hasFetchedRef.current) return;
-    hasFetchedRef.current = true;
-    loadRoutes();
-  }, []);
-
-  const loadRoutes = async () => {
+  const loadRoutes = useCallback(async () => {
     try {
       setIsLoading(true);
       // Quick reachability check to avoid confusing network errors
@@ -83,13 +76,20 @@ const RouteResultsScreen: React.FC = () => {
       if (data.length > 0) {
         setSelectedRoute(data[0]); // Select best route by default
       }
-    } catch (error) {
+    } catch {
       setError('Failed to fetch routes. Please try again.');
       Alert.alert('Error', 'Failed to fetch routes');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [budget, destination, maxTransfers, origin, preference, preferredModes, setError, setIsLoading]);
+
+  useEffect(() => {
+    // Guard against duplicate fetches caused by re-mounts or fast refresh
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
+    void loadRoutes();
+  }, [loadRoutes]);
 
   const handleSelectRoute = async (route: Route) => {
     setSelectedRoute(route);

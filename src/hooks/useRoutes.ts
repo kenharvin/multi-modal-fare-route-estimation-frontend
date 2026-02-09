@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Route, Location, PublicTransportPreference } from '@/types';
 import { fetchRoutes } from '@services/api';
 import { rankRoutes } from '@services/fuzzyLogic';
@@ -20,7 +20,7 @@ export const useRoutes = (
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchAndProcessRoutes = async () => {
+  const fetchAndProcessRoutes = useCallback(async () => {
     if (!origin || !destination) {
       return;
     }
@@ -48,11 +48,11 @@ export const useRoutes = (
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [origin, destination, preference]);
 
   useEffect(() => {
-    fetchAndProcessRoutes();
-  }, [origin, destination, preference]);
+    void fetchAndProcessRoutes();
+  }, [fetchAndProcessRoutes]);
 
   return {
     routes,
