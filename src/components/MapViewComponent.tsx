@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text, Platform } from 'react-native';
 import { Location, Stopover, Route, RouteSegment, TransportType } from '@/types';
 import { getTransportColor } from '@/utils/transportUtils';
 import MapLegend from './MapLegend';
 import { getPreviewPolyline } from '@/services/api';
 import { Ionicons } from '@expo/vector-icons';
+import { WebView } from 'react-native-webview';
 
 // Conditionally import MapView for native platforms
 let MapView: any = null;
@@ -943,267 +944,362 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     return coordinates;
   };
 
-  return (
-    <View style={styles.container}>
-      <MapView
-        style={styles.map}
-        region={region}
-        onPress={handleMapPress}
-      >
-        {/* Railway overlay for native using OpenRailwayMap */}
-        {UrlTile && (
-          <UrlTile
-            urlTemplate="https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png"
-            zIndex={1}
-            maximumZ={19}
-          />
-        )}
-        {origin && (
-          <Marker
-            coordinate={origin.coordinates}
-            title="Origin"
-            description={origin.name}
-            pinColor="green"
-            zIndex={10}
-          />
-        )}
+  // Native (Android/iOS) map: Leaflet inside WebView using OpenStreetMap tiles (no Google Maps key required).
+  // This keeps route results identical; only the basemap rendering changes.
+  const webViewRef = useRef<WebView>(null);
 
-        {destination && (
-          <Marker
-            coordinate={destination.coordinates}
-            title="Destination"
-            description={destination.name}
-            pinColor="red"
-            zIndex={10}
-          />
-        )}
+  type LeafletPolyline = { coords: [number, number][]; color: string; weight: number; dashArray?: string };
+  type LeafletMarker = { lat: number; lon: number; kind: 'origin' | 'destination' | 'stopover' | 'transfer'; label?: string; color?: string };
 
-        {stopovers.map((stopover) => (
-          <Marker
-            key={stopover.id}
-            coordinate={stopover.location.coordinates}
-            title={stopover.type}
-            description={stopover.location.name}
-            pinColor="blue"
-            zIndex={9}
-          />
-        ))}
+  const nativeLeafletPayload = useMemo(() => {
+    const markers: LeafletMarker[] = [];
+    const polylinesOut: LeafletPolyline[] = [];
 
-        {/* Render route segments with different colors per transport type */}
-        {route && (() => {
-          const { segPaths, connectors } = computeRenderPaths(route.segments);
+    if (origin) {
+      markers.push({ lat: origin.coordinates.latitude, lon: origin.coordinates.longitude, kind: 'origin', color: '#27ae60' });
+    }
+    if (destination) {
+      markers.push({ lat: destination.coordinates.latitude, lon: destination.coordinates.longitude, kind: 'destination', color: '#e74c3c' });
+    }
+    for (const s of stopovers) {
+      markers.push({ lat: s.location.coordinates.latitude, lon: s.location.coordinates.longitude, kind: 'stopover', color: '#2980b9' });
+    }
 
-          const segPaths2 = segPaths.map((p) => (Array.isArray(p) ? [...p] : p));
-          const allConnectors = [...connectors];
+    if (showTransferMarkers) {
+      try {
+        for (const m of getTransferMarkers()) {
+          markers.push({
+            lat: m.coordinate.latitude,
+            lon: m.coordinate.longitude,
+            kind: 'transfer',
+            label: `${m.number}${m.kind === 'alight' ? 'A' : 'B'}`,
+            color: m.kind === 'alight' ? '#2980b9' : '#27ae60'
+          });
+        }
+      } catch {
+        // best-effort only
+      }
+    }
 
-          try {
-            const firstIdx = 0;
-            const lastIdx = Math.max(0, segPaths2.length - 1);
+    // Route polylines (public transport)
+    if (route) {
+      const { segPaths, connectors } = computeRenderPaths(route.segments);
+      const segPaths2 = segPaths.map((p) => (Array.isArray(p) ? [...p] : p));
+      const allConnectors = [...connectors];
 
-            const originPt = origin?.coordinates;
-            const destPt = destination?.coordinates;
+      // Match the same connector/detour-trimming logic used by the native react-native-maps renderer.
+      try {
+        const firstIdx = 0;
+        const lastIdx = Math.max(0, segPaths2.length - 1);
+        const originPt = origin?.coordinates;
+        const destPt = destination?.coordinates;
 
-            if (
-              originPt &&
-              segPaths2.length > 0 &&
-              !isWalkType(route.segments[firstIdx]?.transportType) &&
-              Array.isArray(segPaths2[firstIdx]) &&
-              segPaths2[firstIdx].length >= 2
-            ) {
-              const startPt = segPaths2[firstIdx][0];
-              const d0 = haversineM(originPt, startPt);
-              if (d0 > 25 && d0 <= 1200) {
-                allConnectors.push([originPt, startPt]);
-              }
+        if (
+          originPt &&
+          segPaths2.length > 0 &&
+          !isWalkType(route.segments[firstIdx]?.transportType) &&
+          Array.isArray(segPaths2[firstIdx]) &&
+          segPaths2[firstIdx].length >= 2
+        ) {
+          const startPt = segPaths2[firstIdx][0];
+          const d0 = haversineM(originPt, startPt);
+          if (d0 > 25 && d0 <= 1200) {
+            allConnectors.push([originPt, startPt]);
+          }
+        }
+
+        if (
+          destPt &&
+          segPaths2.length > 0 &&
+          !isWalkType(route.segments[lastIdx]?.transportType) &&
+          Array.isArray(segPaths2[lastIdx]) &&
+          segPaths2[lastIdx].length >= 6
+        ) {
+          const path = segPaths2[lastIdx];
+          const searchUpto = Math.max(0, path.length - 3);
+          let bestIdx = -1;
+          let bestM = Number.POSITIVE_INFINITY;
+          for (let k = 0; k < searchUpto; k++) {
+            const d = haversineM(path[k], destPt);
+            if (d < bestM) {
+              bestM = d;
+              bestIdx = k;
             }
-
-            if (
-              destPt &&
-              segPaths2.length > 0 &&
-              !isWalkType(route.segments[lastIdx]?.transportType) &&
-              Array.isArray(segPaths2[lastIdx]) &&
-              segPaths2[lastIdx].length >= 6
-            ) {
-              const path = segPaths2[lastIdx];
-              const searchUpto = Math.max(0, path.length - 3);
-              let bestIdx = -1;
-              let bestM = Number.POSITIVE_INFINITY;
-              for (let k = 0; k < searchUpto; k++) {
-                const d = haversineM(path[k], destPt);
-                if (d < bestM) {
-                  bestM = d;
-                  bestIdx = k;
-                }
-              }
-
-              if (bestIdx >= 0 && bestM <= 80) {
-                const tailM = polylineLenM(path.slice(bestIdx));
-                const directM = haversineM(path[bestIdx], destPt);
-                const isShortHop = directM <= 160;
-                const isDetour = tailM > Math.max(220, directM * 3.0);
-                if (isShortHop && isDetour) {
-                  segPaths2[lastIdx] = path.slice(0, bestIdx + 1);
-                  allConnectors.push([path[bestIdx], destPt]);
-                }
-              } else if (Array.isArray(segPaths2[lastIdx]) && segPaths2[lastIdx].length >= 2) {
-                const endPt = segPaths2[lastIdx][segPaths2[lastIdx].length - 1];
-                const d1 = haversineM(endPt, destPt);
-                if (d1 > 25 && d1 <= 1200) {
-                  allConnectors.push([endPt, destPt]);
-                }
-              }
-            }
-          } catch {
-            // best-effort only
           }
 
-          return (
-            <>
-              {segPaths2.map((pathCoordinates, index) => {
-                const segment = route.segments[index];
-                const isWalk = isWalkType(segment.transportType);
+          if (bestIdx >= 0 && bestM <= 80) {
+            const tailM = polylineLenM(path.slice(bestIdx));
+            const directM = haversineM(path[bestIdx], destPt);
+            const isShortHop = directM <= 160;
+            const isDetour = tailM > Math.max(220, directM * 3.0);
+            if (isShortHop && isDetour) {
+              segPaths2[lastIdx] = path.slice(0, bestIdx + 1);
+              allConnectors.push([path[bestIdx], destPt]);
+            }
+          } else if (Array.isArray(segPaths2[lastIdx]) && segPaths2[lastIdx].length >= 2) {
+            const endPt = segPaths2[lastIdx][segPaths2[lastIdx].length - 1];
+            const d1 = haversineM(endPt, destPt);
+            if (d1 > 25 && d1 <= 1200) {
+              allConnectors.push([endPt, destPt]);
+            }
+          }
+        }
+      } catch {
+        // best-effort only
+      }
 
-                console.log(`[MapView] Rendering segment ${index}:`, {
-                  id: segment.id,
-                  hasGeometry: !!segment.geometry,
-                  geometryLength: segment.geometry?.length || 0,
-                  pathLength: pathCoordinates.length,
-                  firstCoord: pathCoordinates[0],
-                  lastCoord: pathCoordinates[pathCoordinates.length - 1]
-                });
+      segPaths2.forEach((pathCoordinates, index) => {
+        if (!Array.isArray(pathCoordinates) || pathCoordinates.length < 2) return;
+        const segment = route.segments[index];
+        const isWalk = isWalkType(segment.transportType);
+        polylinesOut.push({
+          coords: pathCoordinates.map((c) => [c.latitude, c.longitude]),
+          color: isWalk ? '#7f8c8d' : getTransportColor(segment.transportType),
+          weight: isWalk ? 4 : 5,
+          dashArray: isWalk ? '3 10' : undefined
+        });
+      });
 
-                if (!Array.isArray(pathCoordinates) || pathCoordinates.length < 2) return null;
+      for (const conn of allConnectors) {
+        if (!Array.isArray(conn) || conn.length < 2) continue;
+        polylinesOut.push({
+          coords: conn.map((c) => [c.latitude, c.longitude]),
+          color: '#7f8c8d',
+          weight: 4,
+          dashArray: '3 10'
+        });
+      }
+    }
 
-                return (
-                  <React.Fragment key={`${route.id}-${segment.id}-${index}`}>
-                    <Polyline
-                      coordinates={pathCoordinates}
-                      strokeColor={isWalk ? '#7f8c8d' : getTransportColor(segment.transportType)}
-                      strokeWidth={isWalk ? 4 : 5}
-                      lineDashPattern={isWalk ? [2, 10] : undefined}
-                      geodesic={false}
-                      zIndex={5}
-                      lineCap="round"
-                      lineJoin="round"
-                    />
-                  </React.Fragment>
-                );
-              })}
+    // Private vehicle / custom polylines
+    if (!route && showRoute && polylines && polylines.length > 0) {
+      for (const p of polylines) {
+        if (!Array.isArray(p?.coords) || p.coords.length < 2) continue;
+        polylinesOut.push({
+          coords: p.coords.map((c) => [c.latitude, c.longitude]),
+          color: p.color || polylineColor,
+          weight: typeof p.width === 'number' ? p.width : polylineWidth,
+          dashArray: p.dashed ? '4 8' : undefined
+        });
+      }
+    }
 
-              {allConnectors.map((conn, idx) => {
-                if (!Array.isArray(conn) || conn.length < 2) return null;
-                return (
-                  <Polyline
-                    key={`transfer-connector-${idx}`}
-                    coordinates={conn}
-                    strokeColor={'#7f8c8d'}
-                    strokeWidth={4}
-                    lineDashPattern={[2, 10]}
-                    geodesic={false}
-                    zIndex={6}
-                    lineCap="round"
-                    lineJoin="round"
-                  />
-                );
-              })}
-            </>
-          );
-        })()}
+    if (!route && showRoute && (!polylines || polylines.length === 0) && polylineCoords && polylineCoords.length >= 2) {
+      polylinesOut.push({
+        coords: polylineCoords.map((c) => [c.latitude, c.longitude]),
+        color: polylineColor,
+        weight: polylineWidth
+      });
+    }
 
-        {/* Segment start/end badges (mode icons) */}
-        {route && getSegmentEndpointMarkers().map((m) => (
-          <Marker
-            key={`seg-pt-${m.id}`}
-            coordinate={m.coordinate}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-            zIndex={7}
-          >
-            <View style={[styles.segmentEndpointBadge, { backgroundColor: getTransportColorSafe(m.modeType) }]}>
-              <Ionicons name={getModeIconName(m.modeType) as any} size={13} color="#fff" />
-            </View>
-          </Marker>
-        ))}
+    if (
+      !route &&
+      showRoute &&
+      (!polylines || polylines.length === 0) &&
+      (!polylineCoords || polylineCoords.length < 2) &&
+      origin &&
+      destination &&
+      previewCoords &&
+      previewCoords.length >= 2
+    ) {
+      polylinesOut.push({
+        coords: previewCoords.map((c) => [c.latitude, c.longitude]),
+        color: '#3498db',
+        weight: 5
+      });
+    }
 
-        {/* Numbered transfer-point markers (A=alight, B=board; kept minimal to avoid clutter) */}
-        {showTransferMarkers && getTransferMarkers().map((m) => (
-          <Marker
-            key={`transfer-${m.number}-${m.kind}`}
-            coordinate={m.coordinate}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-            zIndex={8}
-          >
-            <View style={[styles.transferBadge, m.kind === 'alight' ? styles.transferBadgeAlight : styles.transferBadgeBoard]}>
-              <View style={styles.transferBadgeTopRow}>
-                <Text style={styles.transferBadgeText}>{m.number}</Text>
-                <Ionicons name={getModeIconName(m.modeType)} size={11} color="#fff" />
-              </View>
-              <Text style={styles.transferBadgeSubText}>{m.kind === 'alight' ? 'A' : 'B'}</Text>
-            </View>
+    const centerLat = origin?.coordinates.latitude || destination?.coordinates.latitude || 14.5995;
+    const centerLon = origin?.coordinates.longitude || destination?.coordinates.longitude || 120.9842;
 
-            {Callout && (
-              <Callout>
-                <View style={styles.transferCallout}>
-                  <Text style={styles.transferCalloutTitle}>
-                    Transfer {m.number} {m.kind === 'alight' ? '(Alight)' : '(Board)'}
-                  </Text>
-                  <Text style={styles.transferCalloutRow}>
-                    {getModeLabel(m.fromType)} → {getModeLabel(m.toType)}
-                  </Text>
-                  <Text style={styles.transferCalloutRow}>
-                    {m.kind === 'alight'
-                      ? `Alight from ${getModeLabel(m.fromType)} here.`
-                      : `Board ${getModeLabel(m.toType)} here.`}
-                  </Text>
-                </View>
-              </Callout>
-            )}
-          </Marker>
-        ))}
+    return {
+      center: { lat: centerLat, lon: centerLon, zoom: 13 },
+      markers,
+      polylines: polylinesOut
+    };
+  }, [
+    origin,
+    destination,
+    stopovers,
+    route,
+    polylines,
+    polylineCoords,
+    polylineColor,
+    polylineWidth,
+    showRoute,
+    showTransferMarkers,
+    previewCoords
+  ]);
 
-        {/* Fallback route rendering for simple routes without segments */}
-        {showRoute && !route && polylines && polylines.length > 0 && (
-          <>
-            {polylines
-              .filter((p) => Array.isArray(p?.coords) && p.coords.length >= 2)
-              .map((p, idx) => (
-                <Polyline
-                  key={`custom-leg-native-${idx}`}
-                  coordinates={p.coords}
-                  strokeColor={p.color || polylineColor}
-                  strokeWidth={typeof p.width === 'number' ? p.width : polylineWidth}
-                  lineDashPattern={p.dashed ? [4, 8] : undefined}
-                  geodesic={false}
-                  zIndex={5}
-                  lineCap="round"
-                  lineJoin="round"
-                />
-              ))}
-          </>
-        )}
+  const nativeLeafletHtml = useMemo(() => {
+    const dataJson = JSON.stringify(nativeLeafletPayload).replace(/</g, '\\u003c');
+    return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+      html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; }
+      .transfer-badge {
+        width: 26px;
+        height: 26px;
+        border-radius: 13px;
+        border: 2px solid #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 800;
+        font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      const INITIAL = ${dataJson};
+      const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([INITIAL.center.lat, INITIAL.center.lon], INITIAL.center.zoom || 13);
 
-        {showRoute && !route && (!polylines || polylines.length === 0) && polylineCoords && polylineCoords.length >= 2 && (
-          <Polyline
-            coordinates={polylineCoords}
-            strokeColor={polylineColor}
-            strokeWidth={polylineWidth}
-            geodesic={false}
-            zIndex={5}
-            lineCap="round"
-            lineJoin="round"
-          />
-        )}
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
 
-        {/* Preview polyline only when we don't have a computed/explicit geometry */}
-        {showRoute && !route && (!polylines || polylines.length === 0) && (!polylineCoords || polylineCoords.length < 2) && origin && destination && previewCoords && (
-          <Polyline
-            coordinates={previewCoords}
-            strokeColor="#3498db"
-            strokeWidth={5}
-          />
-        )}
-      </MapView>
+      const layer = L.layerGroup().addTo(map);
+
+      function clearLayer() {
+        layer.clearLayers();
+      }
+
+      function addMarker(m) {
+        if (m.kind === 'transfer' && m.label) {
+          const icon = L.divIcon({
+            className: '',
+            html:
+              '<div class="transfer-badge" style="background:' +
+              (m.color || '#2980b9') +
+              ';">' +
+              (m.label || '') +
+              '</div>',
+            iconSize: [26, 26],
+            iconAnchor: [13, 13]
+          });
+          L.marker([m.lat, m.lon], { icon }).addTo(layer);
+          return;
+        }
+
+        const color = m.color || (m.kind === 'origin' ? '#27ae60' : m.kind === 'destination' ? '#e74c3c' : '#2980b9');
+        L.circleMarker([m.lat, m.lon], {
+          radius: 7,
+          color: '#fff',
+          weight: 2,
+          fillColor: color,
+          fillOpacity: 1
+        }).addTo(layer);
+      }
+
+      function addPolyline(p) {
+        if (!Array.isArray(p.coords) || p.coords.length < 2) return;
+        const opts = {
+          color: p.color || '#3498db',
+          weight: typeof p.weight === 'number' ? p.weight : 5,
+          lineCap: 'round',
+          lineJoin: 'round'
+        };
+        if (p.dashArray) {
+          opts.dashArray = p.dashArray;
+        }
+        L.polyline(p.coords, opts).addTo(layer);
+      }
+
+      function setData(data) {
+        clearLayer();
+        (data.markers || []).forEach(addMarker);
+        (data.polylines || []).forEach(addPolyline);
+
+        // Fit map to visible geometry/markers.
+        try {
+          const pts = [];
+          (data.markers || []).forEach(m => pts.push([m.lat, m.lon]));
+          (data.polylines || []).forEach(p => (p.coords || []).forEach(c => pts.push(c)));
+          if (pts.length >= 2) {
+            const b = L.latLngBounds(pts);
+            map.fitBounds(b, { padding: [24, 24] });
+          } else if (pts.length === 1) {
+            map.setView(pts[0], data.center.zoom || 14);
+          }
+        } catch {}
+      }
+
+      setData(INITIAL);
+      setTimeout(() => { try { map.invalidateSize(); } catch {} }, 50);
+
+      map.on('click', (e) => {
+        try {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mapClick', lat: e.latlng.lat, lon: e.latlng.lng }));
+        } catch {}
+      });
+    </script>
+  </body>
+</html>`;
+  }, [nativeLeafletPayload]);
+
+  const handleLeafletMessage = (event: any) => {
+    try {
+      const msg = JSON.parse(event?.nativeEvent?.data || '{}');
+      if (msg?.type !== 'mapClick') return;
+      const coordinate = { latitude: Number(msg.lat), longitude: Number(msg.lon) };
+      if (!isFinite(coordinate.latitude) || !isFinite(coordinate.longitude)) return;
+
+      if (selectingOrigin && onOriginSelect) {
+        const location: Location = {
+          name: `Location at ${coordinate.latitude.toFixed(4)}, ${coordinate.longitude.toFixed(4)}`,
+          coordinates: coordinate,
+          address: 'Selected from map'
+        };
+        onOriginSelect(location);
+        setSelectingOrigin(false);
+        return;
+      }
+      if (selectingDestination && onDestinationSelect) {
+        const location: Location = {
+          name: `Location at ${coordinate.latitude.toFixed(4)}, ${coordinate.longitude.toFixed(4)}`,
+          coordinates: coordinate,
+          address: 'Selected from map'
+        };
+        onDestinationSelect(location);
+        setSelectingDestination(false);
+        return;
+      }
+      if (selectingStopover && onStopoverSelect) {
+        const location: Location = {
+          name: `Location at ${coordinate.latitude.toFixed(4)}, ${coordinate.longitude.toFixed(4)}`,
+          coordinates: coordinate,
+          address: 'Selected from map'
+        };
+        onStopoverSelect(location);
+        setSelectingStopover(false);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <WebView
+        ref={webViewRef}
+        style={styles.map}
+        originWhitelist={['*']}
+        source={{ html: nativeLeafletHtml }}
+        onMessage={handleLeafletMessage}
+        javaScriptEnabled
+        domStorageEnabled
+      />
 
       {/* Legend toggle (hidden by default; tap to show) */}
       {route && route.segments.length > 0 && (

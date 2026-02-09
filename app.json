@@ -4,9 +4,12 @@
     "slug": "multi-modal-fare-estimation",
     "version": "1.0.0",
     "orientation": "portrait",
-    
     "userInterfaceStyle": "light",
-    "platforms": ["ios", "android", "web"],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "sdkVersion": "54.0.0",
     "splash": {
       "resizeMode": "contain",
@@ -14,6 +17,17 @@
     },
     "assetBundlePatterns": [
       "**/*"
+    ],
+    "plugins": [
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true,
@@ -23,14 +37,12 @@
       }
     },
     "android": {
-      
       "package": "com.multimodalfare.app",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "INTERNET"
       ],
-      "usesCleartextTraffic": true,
       "config": {
         "googleMaps": {
           "apiKey": "YOUR_GOOGLE_MAPS_API_KEY"
@@ -39,6 +51,18 @@
     },
     "web": {
       "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5cf01d37-b7e5-4e7f-998f-09b9227abf15"
+      }
+    },
+    "owner": "raikiri",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/5cf01d37-b7e5-4e7f-998f-09b9227abf15"
     }
   }
 }
