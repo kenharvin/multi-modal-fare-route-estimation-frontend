@@ -20,6 +20,10 @@
     "production": {
       "distribution": "store",
       "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://navigo.ildf.site",
+        "EXPO_PUBLIC_API_KEY": "9pRmJvbkz8SsYnEifpBUXDtL5F-IclQNrSsWAc5XiSAx0IaQTwzMfaa8w5mBbVtl"
+      },
       "android": {
         "buildType": "app-bundle"
       }
