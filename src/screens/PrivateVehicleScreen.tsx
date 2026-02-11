@@ -157,7 +157,7 @@ const PrivateVehicleScreen: React.FC = () => {
           <MaterialCommunityIcons
             name="map-marker"
             size={18}
-            color={colors.white}
+            color={colors.textWhite}
             style={styles.mapButtonPrimaryIcon}
           />
           <Text style={styles.mapButtonTextPrimary}>
@@ -233,6 +233,19 @@ const PrivateVehicleScreen: React.FC = () => {
             <View style={styles.sheetDivider} />
 
             <View style={styles.sheetSection}>
+              <Text style={styles.sectionTitle}>Stopovers (Optional)</Text>
+              <Text style={styles.sectionSubtitle}>Add up to {MAX_STOPOVERS} stopovers</Text>
+              <StopoverInput
+                stopovers={stopovers}
+                onAddStopover={handleAddStopover}
+                onRemoveStopover={handleRemoveStopover}
+                searchProvider={(q) => searchPois(q, 10, currentLocation)}
+                onPickFromMap={handleRequestStopoverPickFromMap}
+              />
+            </View>
+
+            <View style={styles.sheetDivider} />
+            <View style={styles.sheetSection}>
               <Text style={styles.sectionTitle}>Vehicle Information</Text>
               <View style={styles.vehiclesContainer}>
                 {vehicleCategories.map((cat) => (
@@ -247,7 +260,7 @@ const PrivateVehicleScreen: React.FC = () => {
                     <MaterialCommunityIcons
                       name={cat.icon as any}
                       size={26}
-                      color={vehicle.category === cat.value ? colors.primary : colors.textSecondary}
+                      color={vehicle.category === cat.value ? colors.textPrimary : colors.textSecondary}
                     />
                     <Text style={[
                       styles.vehicleLabel,
@@ -276,19 +289,6 @@ const PrivateVehicleScreen: React.FC = () => {
                 keyboardType="numeric"
                 mode="outlined"
                 style={styles.input}
-              />
-            </View>
-
-            <View style={styles.sheetDivider} />
-            <View style={styles.sheetSection}>
-              <Text style={styles.sectionTitle}>Stopovers (Optional)</Text>
-              <Text style={styles.sectionSubtitle}>Add up to {MAX_STOPOVERS} stopovers</Text>
-              <StopoverInput
-                stopovers={stopovers}
-                onAddStopover={handleAddStopover}
-                onRemoveStopover={handleRemoveStopover}
-                searchProvider={(q) => searchPois(q, 10, currentLocation)}
-                onPickFromMap={handleRequestStopoverPickFromMap}
               />
             </View>
 
@@ -362,6 +362,19 @@ const PrivateVehicleScreen: React.FC = () => {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Stopovers (Optional)</Text>
+        <Text style={styles.sectionSubtitle}>Add up to {MAX_STOPOVERS} stopovers</Text>
+        
+        <StopoverInput
+          stopovers={stopovers}
+          onAddStopover={handleAddStopover}
+          onRemoveStopover={handleRemoveStopover}
+          searchProvider={(q) => searchPois(q, 10, currentLocation)}
+          onPickFromMap={handleRequestStopoverPickFromMap}
+        />
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Vehicle Information</Text>
         <View style={styles.vehiclesContainer}>
           {vehicleCategories.map((cat) => (
@@ -405,19 +418,6 @@ const PrivateVehicleScreen: React.FC = () => {
           keyboardType="numeric"
           mode="outlined"
           style={styles.input}
-        />
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Stopovers (Optional)</Text>
-        <Text style={styles.sectionSubtitle}>Add up to {MAX_STOPOVERS} stopovers</Text>
-        
-        <StopoverInput
-          stopovers={stopovers}
-          onAddStopover={handleAddStopover}
-          onRemoveStopover={handleRemoveStopover}
-          searchProvider={(q) => searchPois(q, 10, currentLocation)}
-          onPickFromMap={handleRequestStopoverPickFromMap}
         />
       </View>
 
@@ -492,6 +492,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     bottom: spacing.lg,
     backgroundColor: colors.white,
     borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.gray5,
     ...shadows.small
   },
   sheetHandleArea: {
@@ -534,21 +536,19 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     padding: spacing.lg,
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
-    borderRadius: borderRadius.xl,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.gray6,
-    ...shadows.small
+    backgroundColor: 'transparent'
   },
   title: {
     fontSize: fontSize.title,
     fontWeight: 'bold',
     color: colors.textPrimary,
-    marginBottom: spacing.xs
+    marginBottom: spacing.xs,
+    textAlign: 'center'
   },
   subtitle: {
     fontSize: fontSize.md,
-    color: colors.textSecondary
+    color: colors.textSecondary,
+    textAlign: 'center'
   },
   section: {
     backgroundColor: colors.white,
@@ -557,19 +557,21 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: spacing.lg,
     borderRadius: borderRadius.xl,
     borderWidth: 1,
-    borderColor: colors.gray6,
+    borderColor: colors.gray5,
     ...shadows.small
   },
   sectionTitle: {
     fontSize: fontSize.xl,
     fontWeight: '600',
     color: colors.textPrimary,
-    marginBottom: spacing.sm
+    marginBottom: spacing.sm,
+    textAlign: 'center'
   },
   sectionSubtitle: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
-    marginBottom: spacing.md
+    marginBottom: spacing.md,
+    textAlign: 'center'
   },
   mapButton: {
     flexDirection: 'row',
@@ -601,7 +603,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginLeft: spacing.sm
   },
   mapButtonTextPrimary: {
-    color: colors.white,
+    color: colors.textWhite,
     fontSize: fontSize.lg,
     fontWeight: '600',
     textAlign: 'center'
@@ -625,7 +627,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.gray7,
     borderRadius: borderRadius.xl,
     borderWidth: 2,
-    borderColor: 'transparent'
+    borderColor: colors.gray5
   },
   vehicleCardActive: {
     backgroundColor: colors.primaryLight,
@@ -639,8 +641,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: '500'
   },
   vehicleLabelActive: {
-    color: colors.primary,
-    fontWeight: '600'
+    color: colors.textPrimary,
+    fontWeight: '700'
   },
   efficiencyText: {
     fontSize: fontSize.xs,
@@ -680,7 +682,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   calculateButtonLabel: {
     fontSize: fontSize.lg,
-    fontWeight: '600'
+    fontWeight: '600',
+    color: colors.textWhite
   }
 });
 

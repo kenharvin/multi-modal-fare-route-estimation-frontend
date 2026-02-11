@@ -82,9 +82,17 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   showRoute = false,
   showTransferMarkers = true
 }) => {
-  const { colors } = useThemeMode();
+  const { colors, isDark } = useThemeMode();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const effectivePolylineColor = polylineColor || colors.primary;
+
+  // Dark-mode basemap: keep it dark, but ensure roads stay visible.
+  const baseTileUrl = isDark
+    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const baseTileAttribution = isDark
+    ? '© OpenStreetMap contributors © CARTO'
+    : '© OpenStreetMap contributors';
 
   const [selectingOrigin, setSelectingOrigin] = useState<boolean>(false);
   const [selectingDestination, setSelectingDestination] = useState<boolean>(false);
@@ -569,7 +577,18 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
 
     webReturn = (
       <View style={styles.container}>
-        <div style={{ width: '100%', height: '100%' }}>
+        <div
+          className={isDark ? 'map-dim-tiles' : undefined}
+          style={{ width: '100%', height: '100%' }}
+        >
+          {isDark && (
+            <style>{`
+              /* Dark-mode basemap tuning: keep dark, lift roads/lines */
+              .map-dim-tiles .leaflet-container .base-tiles {
+                filter: brightness(3.00) contrast(1.22) saturate(1.10);
+              }
+            `}</style>
+          )}
           <MapContainer
             center={center}
             zoom={13}
@@ -577,13 +596,19 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
           >
             {/* Base OSM map */}
             <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution={
+                isDark
+                  ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                  : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              }
+              url={baseTileUrl}
+              className="base-tiles"
             />
             {/* Railway overlay via OpenRailwayMap */}
             <TileLayer
               attribution='&copy; OpenRailwayMap contributors'
               url="https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png"
+              className="rail-overlay"
             />
             {origin && (
               <LeafletMarker position={[origin.coordinates.latitude, origin.coordinates.longitude]}>
@@ -1017,6 +1042,8 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
       html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; }
+      :root { color-scheme: light; }
+      ${isDark ? `.base-tiles { filter: brightness(3.00) contrast(1.22) saturate(1.10); }` : ''}
       .transfer-badge {
         width: 26px;
         height: 26px;
@@ -1040,9 +1067,10 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       const INITIAL = ${dataJson};
       const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([INITIAL.center.lat, INITIAL.center.lon], INITIAL.center.zoom || 13);
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      L.tileLayer('${baseTileUrl}', {
         maxZoom: 19,
-        attribution: '© OpenStreetMap contributors'
+        attribution: '${baseTileAttribution}',
+        className: 'base-tiles'
       }).addTo(map);
 
       const layer = L.layerGroup().addTo(map);
@@ -1122,7 +1150,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     </script>
   </body>
 </html>`;
-  }, [nativeLeafletPayload]);
+  }, [baseTileAttribution, baseTileUrl, isDark, nativeLeafletPayload]);
 
   const handleLeafletMessage = (event: any) => {
     try {

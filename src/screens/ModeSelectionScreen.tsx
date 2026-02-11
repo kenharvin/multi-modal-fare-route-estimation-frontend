@@ -38,7 +38,7 @@ const ModeSelectionScreen: React.FC = () => {
         >
           <Text style={styles.modeTitle}>Public Transport</Text>
           <Text style={styles.modeDescription}>
-            Find the best routes using jeepney, bus, UV express, and train
+            Find the best routes using jeepney, bus, and train
           </Text>
         </TouchableOpacity>
 
@@ -65,17 +65,19 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xxl,
     paddingBottom: spacing.lg,
-    backgroundColor: colors.white
+    backgroundColor: 'transparent'
   },
   title: {
     fontSize: fontSize.heading,
     fontWeight: 'bold',
     color: colors.textPrimary,
-    marginBottom: spacing.sm
+    marginBottom: spacing.sm,
+    textAlign: 'center'
   },
   subtitle: {
     fontSize: fontSize.lg,
-    color: colors.textSecondary
+    color: colors.textSecondary,
+    textAlign: 'center'
   },
   modesContainer: {
     padding: spacing.lg
@@ -85,6 +87,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: borderRadius.xl,
     padding: spacing.xl,
     marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.gray5,
     ...shadows.medium
   },
   iconContainer: {
@@ -99,12 +103,14 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fontSize.xxl,
     fontWeight: 'bold',
     color: colors.textPrimary,
-    marginBottom: spacing.sm
+    marginBottom: spacing.sm,
+    textAlign: 'center'
   },
   modeDescription: {
     fontSize: fontSize.md,
     color: colors.textSecondary,
-    lineHeight: 20
+    lineHeight: 20,
+    textAlign: 'center'
   },
   features: {
     marginTop: 8

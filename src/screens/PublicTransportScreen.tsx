@@ -85,7 +85,7 @@ const PublicTransportScreen: React.FC = () => {
           <MaterialCommunityIcons
             name="map-marker"
             size={18}
-            color={colors.white}
+            color={colors.textWhite}
             style={styles.mapButtonPrimaryIcon}
           />
           <Text style={styles.mapButtonTextPrimary}>
@@ -313,7 +313,7 @@ const PublicTransportScreen: React.FC = () => {
                   // Type widening is fine here; icons are constrained by our array.
                   name={pref.icon as any}
                   size={26}
-                  color={isActive ? colors.primary : colors.textSecondary}
+                  color={isActive ? colors.textPrimary : colors.textSecondary}
                 />
               </View>
               <Text
@@ -414,6 +414,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     bottom: spacing.lg,
     backgroundColor: colors.white,
     borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.gray5,
     ...shadows.small,
   },
   sheetHandleArea: {
@@ -456,17 +458,20 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.md,
-    backgroundColor: colors.white
+    backgroundColor: 'transparent',
+    borderWidth: 0
   },
   title: {
     fontSize: fontSize.title,
     fontWeight: 'bold',
     color: colors.textPrimary,
-    marginBottom: spacing.xs
+    marginBottom: spacing.xs,
+    textAlign: 'center'
   },
   subtitle: {
     fontSize: fontSize.md,
-    color: colors.textSecondary
+    color: colors.textSecondary,
+    textAlign: 'center'
   },
   section: {
     backgroundColor: colors.white,
@@ -474,13 +479,16 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: spacing.md,
     marginHorizontal: spacing.lg,
     borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.gray5,
     ...shadows.small
   },
   sectionTitle: {
     fontSize: fontSize.xl,
     fontWeight: '600',
     color: colors.textPrimary,
-    marginBottom: spacing.lg
+    marginBottom: spacing.lg,
+    textAlign: 'center'
   },
   mapButton: {
     flexDirection: 'row',
@@ -512,7 +520,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginLeft: spacing.sm
   },
   mapButtonTextPrimary: {
-    color: colors.white,
+    color: colors.textWhite,
     fontSize: fontSize.lg,
     fontWeight: '600',
     textAlign: 'center'
@@ -563,7 +571,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   modeChip: {
     borderWidth: 1,
-    borderColor: colors.gray6,
+    borderColor: colors.gray5,
     borderRadius: borderRadius.round,
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -578,8 +586,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.textSecondary
   },
   modeChipTextActive: {
-    color: colors.primary,
-    fontWeight: '600'
+    color: colors.textPrimary,
+    fontWeight: '700'
   },
   preferenceCard: {
     width: '48%',
@@ -590,7 +598,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.gray7,
     borderRadius: borderRadius.xl,
     borderWidth: 2,
-    borderColor: 'transparent'
+    borderColor: colors.gray5
   },
   preferenceCardActive: {
     backgroundColor: colors.primaryLight,
@@ -617,8 +625,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: '500'
   },
   preferenceLabelActive: {
-    color: colors.primary,
-    fontWeight: '600'
+    color: colors.textPrimary,
+    fontWeight: '700'
   },
   footer: {
     paddingHorizontal: spacing.lg,
@@ -634,7 +642,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   findButtonLabel: {
     fontSize: 16,
-    fontWeight: '600'
+    fontWeight: '600',
+    color: colors.textWhite
   }
 });
 
