@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Dimensions, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
@@ -12,10 +12,14 @@ import MapViewComponent from '@components/MapViewComponent';
 import { Button, TextInput, Switch } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { searchPois } from '@services/api';
-import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
+import { borderRadius, fontSize, shadows, spacing, type ThemeColors } from '@/utils/theme';
+import { useThemeMode } from '@context/ThemeContext';
 type PrivateVehicleNavigationProp = StackNavigationProp<RootStackParamList, 'PrivateVehicle'>;
 
 const PrivateVehicleScreen: React.FC = () => {
+  const { colors } = useThemeMode();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const navigation = useNavigation<PrivateVehicleNavigationProp>();
   const { currentLocation, selectedOrigin, selectedDestination, setSelectedOrigin, setSelectedDestination } = useLocation();
   const { setIsLoading } = useApp();
@@ -27,6 +31,7 @@ const PrivateVehicleScreen: React.FC = () => {
   const [fuelPrice, setFuelPrice] = useState<string>('60');
   const [stopovers, setStopovers] = useState<Stopover[]>([]);
   const [showMap, setShowMap] = useState<boolean>(false);
+  const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
   const [stopoverPickActive, setStopoverPickActive] = useState<boolean>(false);
   const [pendingStopoverType, setPendingStopoverType] = useState<StopoverType>(StopoverType.OTHER);
   const [mapOpenedForStopoverPick, setMapOpenedForStopoverPick] = useState<boolean>(false);
@@ -35,6 +40,20 @@ const PrivateVehicleScreen: React.FC = () => {
     avoidHighways: false,
     preferShortest: true
   });
+
+  const windowHeight = Dimensions.get('window').height;
+  const sheetExpandedHeight = Math.round(windowHeight * 0.88);
+  const sheetCollapsedHeight = 220;
+  const sheetHiddenOffset = Math.max(0, sheetExpandedHeight - sheetCollapsedHeight);
+  const sheetTranslateY = useRef(new Animated.Value(sheetHiddenOffset)).current;
+
+  useEffect(() => {
+    Animated.timing(sheetTranslateY, {
+      toValue: sheetExpanded ? 0 : sheetHiddenOffset,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [sheetExpanded, sheetHiddenOffset, sheetTranslateY]);
 
   const MAX_STOPOVERS = 3;
 
@@ -128,15 +147,29 @@ const PrivateVehicleScreen: React.FC = () => {
     });
   };
 
-  return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Private Vehicle Planner</Text>
-        <Text style={styles.subtitle}>Calculate fuel costs and plan your route</Text>
-      </View>
+  const renderLocationForm = (opts?: { compact?: boolean }) => {
+    const compact = !!opts?.compact;
+    return (
+      <>
+        {!compact && <Text style={styles.sectionTitle}>Locations</Text>}
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Locations</Text>
+        <TouchableOpacity style={styles.mapButtonPrimary} onPress={handleToggleMap}>
+          <MaterialCommunityIcons
+            name="map-marker"
+            size={18}
+            color={colors.white}
+            style={styles.mapButtonPrimaryIcon}
+          />
+          <Text style={styles.mapButtonTextPrimary}>
+            {showMap ? 'Hide Map' : 'Select from Map (Recommended)'}
+          </Text>
+        </TouchableOpacity>
+        {!showMap && (
+          <Text style={styles.mapButtonHint}>
+            Recommended for easier pinning.
+          </Text>
+        )}
+
         <DestinationInput
           label="Origin"
           value={selectedOrigin}
@@ -151,30 +184,181 @@ const PrivateVehicleScreen: React.FC = () => {
           placeholder="Final destination"
           searchProvider={(q) => searchPois(q, 10, currentLocation)}
         />
-        
-        <TouchableOpacity
-          style={styles.mapButton}
-          onPress={handleToggleMap}
-        >
-          <MaterialCommunityIcons name="map-marker" size={18} color={colors.primary} />
-          <Text style={styles.mapButtonText}>
-            {showMap ? 'Hide Map' : 'Select from Map'}
-          </Text>
-        </TouchableOpacity>
+      </>
+    );
+  };
 
-        {showMap && (
-          <View style={styles.mapContainer}>
-            <MapViewComponent
-              origin={selectedOrigin}
-              destination={selectedDestination}
-              onOriginSelect={setSelectedOrigin}
-              onDestinationSelect={setSelectedDestination}
-              stopovers={stopovers}
-              onStopoverSelect={handleStopoverSelectedFromMap}
-              autoSelectMode={stopoverPickActive ? 'stopover' : null}
-            />
-          </View>
-        )}
+  if (showMap) {
+    return (
+      <View style={styles.mapScreen}>
+        <MapViewComponent
+          origin={selectedOrigin}
+          destination={selectedDestination}
+          onOriginSelect={setSelectedOrigin}
+          onDestinationSelect={setSelectedDestination}
+          stopovers={stopovers}
+          onStopoverSelect={handleStopoverSelectedFromMap}
+          autoSelectMode={stopoverPickActive ? 'stopover' : null}
+        />
+
+        <Animated.View
+          style={[
+            styles.bottomSheet,
+            {
+              height: sheetExpandedHeight,
+              transform: [{ translateY: sheetTranslateY }],
+            },
+          ]}
+        >
+          <Pressable
+            style={styles.sheetHandleArea}
+            onPress={() => setSheetExpanded((v) => !v)}
+          >
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetHint}>
+              {sheetExpanded ? 'Tap to view the map again' : 'Tap to expand'}
+            </Text>
+          </Pressable>
+
+          <ScrollView
+            style={styles.sheetScroll}
+            contentContainerStyle={styles.sheetScrollContent}
+            keyboardShouldPersistTaps="handled"
+            onScrollBeginDrag={() => setSheetExpanded(true)}
+            onTouchStart={() => {
+              if (!sheetExpanded) setSheetExpanded(true);
+            }}
+          >
+            <View style={styles.sheetSection}>{renderLocationForm({ compact: true })}</View>
+            <View style={styles.sheetDivider} />
+
+            <View style={styles.sheetSection}>
+              <Text style={styles.sectionTitle}>Vehicle Information</Text>
+              <View style={styles.vehiclesContainer}>
+                {vehicleCategories.map((cat) => (
+                  <TouchableOpacity
+                    key={cat.value}
+                    style={[
+                      styles.vehicleCard,
+                      vehicle.category === cat.value && styles.vehicleCardActive
+                    ]}
+                    onPress={() => handleVehicleCategoryChange(cat.value)}
+                  >
+                    <MaterialCommunityIcons
+                      name={cat.icon as any}
+                      size={26}
+                      color={vehicle.category === cat.value ? colors.primary : colors.textSecondary}
+                    />
+                    <Text style={[
+                      styles.vehicleLabel,
+                      vehicle.category === cat.value && styles.vehicleLabelActive
+                    ]}>
+                      {cat.label}
+                    </Text>
+                    <Text style={styles.efficiencyText}>{cat.efficiency} km/L</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TextInput
+                label="Fuel Efficiency (km/L)"
+                value={vehicle.fuelEfficiency.toString()}
+                onChangeText={(text) => setVehicle({ ...vehicle, fuelEfficiency: parseFloat(text) || 0 })}
+                keyboardType="numeric"
+                mode="outlined"
+                style={styles.input}
+              />
+
+              <TextInput
+                label="Current Fuel Price (₱/L)"
+                value={fuelPrice}
+                onChangeText={setFuelPrice}
+                keyboardType="numeric"
+                mode="outlined"
+                style={styles.input}
+              />
+            </View>
+
+            <View style={styles.sheetDivider} />
+            <View style={styles.sheetSection}>
+              <Text style={styles.sectionTitle}>Stopovers (Optional)</Text>
+              <Text style={styles.sectionSubtitle}>Add up to {MAX_STOPOVERS} stopovers</Text>
+              <StopoverInput
+                stopovers={stopovers}
+                onAddStopover={handleAddStopover}
+                onRemoveStopover={handleRemoveStopover}
+                searchProvider={(q) => searchPois(q, 10, currentLocation)}
+                onPickFromMap={handleRequestStopoverPickFromMap}
+              />
+            </View>
+
+            <View style={styles.sheetDivider} />
+            <View style={styles.sheetSection}>
+              <Text style={styles.sectionTitle}>Driving Preferences</Text>
+
+              <View style={styles.preferenceRow}>
+                <View style={styles.preferenceInfo}>
+                  <MaterialCommunityIcons name="cash-remove" size={18} color={colors.textSecondary} />
+                  <Text style={styles.preferenceText}>Avoid Tolls</Text>
+                </View>
+                <Switch
+                  value={preferences.avoidTolls}
+                  onValueChange={(value) => setPreferences({ ...preferences, avoidTolls: value })}
+                  color={colors.primary}
+                />
+              </View>
+
+              <View style={styles.preferenceRow}>
+                <View style={styles.preferenceInfo}>
+                  <MaterialCommunityIcons name="road-variant" size={18} color={colors.textSecondary} />
+                  <Text style={styles.preferenceText}>Avoid Expressways</Text>
+                </View>
+                <Switch
+                  value={preferences.avoidHighways}
+                  onValueChange={(value) => setPreferences({ ...preferences, avoidHighways: value })}
+                  color={colors.primary}
+                />
+              </View>
+
+              <View style={styles.preferenceRow}>
+                <View style={styles.preferenceInfo}>
+                  <MaterialCommunityIcons name="map-marker-distance" size={18} color={colors.textSecondary} />
+                  <Text style={styles.preferenceText}>Prefer Shortest Distance</Text>
+                </View>
+                <Switch
+                  value={preferences.preferShortest}
+                  onValueChange={(value) => setPreferences({ ...preferences, preferShortest: value })}
+                  color={colors.primary}
+                />
+              </View>
+            </View>
+
+            <View style={styles.sheetFooter}>
+              <Button
+                mode="contained"
+                onPress={handleCalculateRoute}
+                style={styles.calculateButton}
+                contentStyle={styles.calculateButtonContent}
+                labelStyle={styles.calculateButtonLabel}
+              >
+                Calculate Route & Cost
+              </Button>
+            </View>
+          </ScrollView>
+        </Animated.View>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Private Vehicle Planner</Text>
+        <Text style={styles.subtitle}>Calculate fuel costs and plan your route</Text>
+      </View>
+
+      <View style={styles.section}>
+        {renderLocationForm()}
       </View>
 
       <View style={styles.section}>
@@ -292,10 +476,59 @@ const PrivateVehicleScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background
+  },
+  mapScreen: {
+    flex: 1,
+    backgroundColor: colors.background
+  },
+  bottomSheet: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.lg,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.xl,
+    ...shadows.small
+  },
+  sheetHandleArea: {
+    alignItems: 'center',
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  sheetHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: borderRadius.round,
+    backgroundColor: colors.gray6,
+  },
+  sheetHint: {
+    marginTop: spacing.xs,
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  sheetScroll: {
+    flex: 1,
+  },
+  sheetScrollContent: {
+    paddingBottom: spacing.xxl,
+  },
+  sheetSection: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  sheetDivider: {
+    height: 1,
+    backgroundColor: colors.gray6,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  sheetFooter: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
   },
   header: {
     padding: spacing.lg,
@@ -347,18 +580,37 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     marginTop: spacing.md
   },
+  mapButtonPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.md,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.lg,
+    marginTop: spacing.md,
+    position: 'relative'
+  },
+  mapButtonPrimaryIcon: {
+    position: 'absolute',
+    left: spacing.md
+  },
   mapButtonText: {
     color: colors.primary,
     fontSize: fontSize.lg,
     fontWeight: '500',
     marginLeft: spacing.sm
   },
-  mapContainer: {
-    height: 300,
-    marginTop: spacing.md,
-    borderRadius: borderRadius.xl,
-    overflow: 'hidden',
-    ...shadows.small
+  mapButtonTextPrimary: {
+    color: colors.white,
+    fontSize: fontSize.lg,
+    fontWeight: '600',
+    textAlign: 'center'
+  },
+  mapButtonHint: {
+    marginTop: spacing.xs,
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   vehiclesContainer: {
     flexDirection: 'row',

@@ -10,24 +10,29 @@ import PrivateVehicleScreen from '@screens/PrivateVehicleScreen';
 import RouteResultsScreen from '@screens/RouteResultsScreen';
 import TripPlanScreen from '@screens/TripPlanScreen';
 import PrivateVehicleResultsScreen from '@screens/PrivateVehicleResultsScreen';
+import { useThemeMode } from '@context/ThemeContext';
+import ThemeToggle from '@components/ThemeToggle';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
 const RootNavigator: React.FC = () => {
+  const { colors } = useThemeMode();
+
   return (
     <Stack.Navigator
       initialRouteName="Welcome"
       screenOptions={{
         headerStyle: {
-          backgroundColor: '#3498db'
+          backgroundColor: colors.primary
         },
-        headerTintColor: '#fff',
+        headerTintColor: colors.textWhite,
         headerTitleStyle: {
           fontWeight: 'bold'
         },
         cardStyle: {
-          backgroundColor: '#f5f5f5'
-        }
+          backgroundColor: colors.background
+        },
+        headerRight: () => <ThemeToggle />
       }}
     >
       <Stack.Screen

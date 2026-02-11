@@ -1,31 +1,37 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Alert, Animated, Dimensions } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Alert, Animated, Dimensions, Pressable } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
 import { PrivateVehicleRoute } from '@/types';
 import { useApp } from '@context/AppContext';
-import { Button, ActivityIndicator } from 'react-native-paper';
+import { Button } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { calculatePrivateVehicleRoute } from '@services/api';
 import MapViewComponent from '@components/MapViewComponent';
+import LogoLoadingScreen from '@components/LogoLoadingScreen';
 import { formatArrivalTimeRange, formatTimeRange } from '@/utils/helpers';
-import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
+import { borderRadius, fontSize, shadows, spacing, type ThemeColors } from '@/utils/theme';
+import { useThemeMode } from '@context/ThemeContext';
 type PrivateVehicleResultsRouteProp = RouteProp<RootStackParamList, 'PrivateVehicleResults'>;
 type PrivateVehicleResultsNavigationProp = StackNavigationProp<RootStackParamList, 'PrivateVehicleResults'>;
 
 const PrivateVehicleResultsScreen: React.FC = () => {
+  const { colors } = useThemeMode();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const navigation = useNavigation<PrivateVehicleResultsNavigationProp>();
   const route = useRoute<PrivateVehicleResultsRouteProp>();
   const { origin, destination, vehicle, fuelPrice, stopovers, preferences } = route.params;
   const { isLoading, setIsLoading, setError } = useApp();
   
   const [routeResult, setRouteResult] = useState<PrivateVehicleRoute | null>(null);
+  const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
 
   const sheetProgress = useRef(new Animated.Value(0)).current; // 0=collapsed, 1=expanded
   const isExpandedRef = useRef<boolean>(false);
   const winH = Dimensions.get('window').height;
-  const sheetCollapsedH = Math.max(360, Math.round(winH * 0.52));
+  const sheetCollapsedH = 220;
   const sheetExpandedH = Math.max(560, Math.round(winH * 0.92));
   const sheetHeight = sheetProgress.interpolate({
     inputRange: [0, 1],
@@ -35,6 +41,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const expandSheet = () => {
     if (isExpandedRef.current) return;
     isExpandedRef.current = true;
+    setSheetExpanded(true);
     Animated.spring(sheetProgress, {
       toValue: 1,
       useNativeDriver: false,
@@ -46,6 +53,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const collapseSheet = () => {
     if (!isExpandedRef.current) return;
     isExpandedRef.current = false;
+    setSheetExpanded(false);
     Animated.spring(sheetProgress, {
       toValue: 0,
       useNativeDriver: false,
@@ -95,12 +103,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Calculating route and fuel cost...</Text>
-      </View>
-    );
+    return <LogoLoadingScreen message="Calculating route and fuel cost" />;
   }
 
   if (!routeResult) {
@@ -155,9 +158,21 @@ const PrivateVehicleResultsScreen: React.FC = () => {
 
       {/* Bottom sheet: expands as user scrolls */}
       <Animated.View style={[styles.sheet, { height: sheetHeight }]}>
-        <View style={styles.sheetHandleWrap}>
+        <Pressable
+          style={styles.sheetHandleWrap}
+          onPress={() => {
+            if (isExpandedRef.current) {
+              collapseSheet();
+            } else {
+              expandSheet();
+            }
+          }}
+        >
           <View style={styles.sheetHandle} />
-        </View>
+          <Text style={styles.sheetHint}>
+            {sheetExpanded ? 'Tap to view the map again' : 'Tap to expand'}
+          </Text>
+        </Pressable>
 
         <Animated.ScrollView
           style={styles.sheetScroll}
@@ -364,7 +379,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background
@@ -411,13 +426,18 @@ const styles = StyleSheet.create({
   sheetHandleWrap: {
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
-    alignItems: 'center'
+    alignItems: 'center',
+    gap: 6
   },
   sheetHandle: {
     width: 44,
     height: 5,
     borderRadius: 3,
     backgroundColor: colors.gray5
+  },
+  sheetHint: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary
   },
   sheetScroll: {
     flex: 1

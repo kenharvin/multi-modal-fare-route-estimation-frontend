@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList } from 'react-native';
 import { Location } from '@/types';
 import { searchStops } from '@services/api';
-import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
+import { borderRadius, fontSize, shadows, spacing, type ThemeColors } from '@/utils/theme';
+import { useThemeMode } from '@context/ThemeContext';
 interface DestinationInputProps {
   label: string;
   value: Location | null;
@@ -18,6 +19,9 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
   placeholder = 'Enter location',
   searchProvider
 }) => {
+  const { colors } = useThemeMode();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const [searchText, setSearchText] = useState<string>(value?.name || '');
   const [suggestions, setSuggestions] = useState<Location[]>([]);
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
@@ -68,7 +72,7 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
           value={searchText}
           onChangeText={handleTextChange}
           placeholder={placeholder}
-          placeholderTextColor="#bdc3c7"
+          placeholderTextColor={colors.textLight}
           onFocus={() => searchText.length >= 3 && setShowSuggestions(true)}
         />
         {searchText.length > 0 && (
@@ -105,7 +109,7 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     marginBottom: spacing.lg
   },

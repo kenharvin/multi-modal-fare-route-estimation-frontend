@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { Stopover, StopoverType, Location } from '@/types';
 import { Button } from 'react-native-paper';
 import DestinationInput from '@components/DestinationInput';
-import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
+import { borderRadius, fontSize, shadows, spacing, type ThemeColors } from '@/utils/theme';
+import { useThemeMode } from '@context/ThemeContext';
 interface StopoverInputProps {
   stopovers: Stopover[];
   onAddStopover: (stopover: Stopover) => void;
@@ -19,6 +20,9 @@ const StopoverInput: React.FC<StopoverInputProps> = ({
   searchProvider,
   onPickFromMap
 }) => {
+  const { colors } = useThemeMode();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const [isAdding, setIsAdding] = useState<boolean>(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [selectedType, setSelectedType] = useState<StopoverType>(StopoverType.GAS);
@@ -124,7 +128,12 @@ const StopoverInput: React.FC<StopoverInputProps> = ({
                 style={[styles.typeCard, selectedType === type.value && styles.typeCardActive]}
                 onPress={() => setSelectedType(type.value)}
               >
-                <Text style={{ fontSize: 28, color: selectedType === type.value ? '#2196f3' : '#7f8c8d' }}>
+                <Text
+                  style={{
+                    fontSize: 28,
+                    color: selectedType === type.value ? colors.primary : colors.textSecondary
+                  }}
+                >
                   {type.label.charAt(0)}
                 </Text>
                 <Text style={[styles.typeLabel, selectedType === type.value && styles.typeLabelActive]}>
@@ -174,7 +183,7 @@ const StopoverInput: React.FC<StopoverInputProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     marginTop: spacing.sm
   },

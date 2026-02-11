@@ -1,9 +1,14 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { TransportType } from '@/types';
 import { getTransportStyle } from '@/utils/transportUtils';
+import { useThemeMode } from '@context/ThemeContext';
+import { type ThemeColors } from '@/utils/theme';
 
 const MapLegend: React.FC = () => {
+  const { colors } = useThemeMode();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const transportTypes = [
     TransportType.JEEPNEY,
     TransportType.BUS,
@@ -35,13 +40,13 @@ const MapLegend: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     position: 'absolute',
     bottom: 16,
     left: 16,
     zIndex: 50,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: colors.white,
     borderRadius: 12,
     padding: 12,
     shadowColor: '#000',
@@ -53,7 +58,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#2c3e50',
+    color: colors.textPrimary,
     marginBottom: 8
   },
   legendItems: {
@@ -79,7 +84,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 10,
-    color: '#2c3e50',
+    color: colors.textPrimary,
     fontWeight: '500'
   },
   transferLegend: {
@@ -88,12 +93,12 @@ const styles = StyleSheet.create({
   transferTitle: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#2c3e50',
+    color: colors.textPrimary,
     marginBottom: 2
   },
   transferText: {
     fontSize: 10,
-    color: '#2c3e50'
+    color: colors.textPrimary
   }
 });
 

@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Route, TransportType } from '@/types';
 import { getTransportStyle } from '@/utils/transportUtils';
 import { formatArrivalTimeRange, formatCurrency, formatTimeRange } from '@/utils/helpers';
-import { borderRadius, colors, fontSize, shadows, spacing } from '@/utils/theme';
+import { borderRadius, fontSize, shadows, spacing, type ThemeColors } from '@/utils/theme';
+import { useThemeMode } from '@context/ThemeContext';
 
 interface RouteCardProps {
   route: Route;
@@ -23,6 +24,9 @@ type StepRow = {
 };
 
 const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect }) => {
+  const { colors } = useThemeMode();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const titleCaseWord = (w: string) => {
     if (!w) return w;
     if (w.length <= 4 && w.toUpperCase() === w) return w;
@@ -273,7 +277,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
   return content;
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     backgroundColor: colors.white,
     borderRadius: borderRadius.xl,

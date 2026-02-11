@@ -1,8 +1,12 @@
-export const colors = {
+import type { ColorSchemeName } from 'react-native';
+
+const BRAND_BLUE = '#0B3A82';
+
+export const lightColors = {
   // Primary colors
-  primary: '#3498db',
-  primaryDark: '#2980b9',
-  primaryLight: '#e3f2fd',
+  primary: BRAND_BLUE,
+  primaryDark: '#082A5D',
+  primaryLight: '#D6E4FF',
   
   // Secondary colors
   secondary: '#2ecc71',
@@ -18,7 +22,7 @@ export const colors = {
   success: '#27ae60',
   warning: '#f39c12',
   error: '#e74c3c',
-  info: '#3498db',
+  info: BRAND_BLUE,
   
   // Neutral colors
   white: '#ffffff',
@@ -44,6 +48,63 @@ export const colors = {
   textLight: '#bdc3c7',
   textWhite: '#ffffff'
 };
+
+export type ThemeColors = typeof lightColors;
+
+export const darkColors = {
+  // Primary colors
+  primary: BRAND_BLUE,
+  primaryDark: '#082A5D',
+  primaryLight: '#0A1E3D',
+
+  // Secondary colors
+  secondary: '#2ecc71',
+  secondaryDark: '#1f9d54',
+  secondaryLight: '#0f2a1b',
+
+  // Accent colors
+  accent: '#f39c12',
+  accentDark: '#c9780b',
+  accentLight: '#2b1f0a',
+
+  // Status colors
+  success: '#27ae60',
+  warning: '#f39c12',
+  error: '#e74c3c',
+  info: BRAND_BLUE,
+
+  // Neutral colors
+  white: '#141a22',
+  black: '#000000',
+  gray1: '#eaf2f8',
+  gray2: '#cfd9e3',
+  gray3: '#a9b7c6',
+  gray4: '#728195',
+  gray5: '#3a4656',
+  gray6: '#243041',
+  gray7: '#0f141b',
+  background: '#0b0f14',
+
+  // Transport type colors
+  jeepney: '#e74c3c',
+  bus: '#3498db',
+  uvExpress: '#9b59b6',
+  train: '#2ecc71',
+
+  // Text colors
+  textPrimary: '#eaf2f8',
+  textSecondary: '#a9b7c6',
+  textLight: '#728195',
+  textWhite: '#ffffff'
+};
+
+export const getColors = (scheme?: ColorSchemeName | 'light' | 'dark') => {
+  const resolved = scheme ?? 'light';
+  return resolved === 'dark' ? darkColors : lightColors;
+};
+
+// Backwards-compatible default; prefer `getColors()` via ThemeContext for app-controlled theming.
+export const colors = lightColors;
 
 export const spacing = {
   xs: 4,

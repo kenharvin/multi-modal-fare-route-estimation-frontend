@@ -1,13 +1,14 @@
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer } from '@react-navigation/native';
-import { MD3LightTheme as PaperLightTheme, Provider as PaperProvider } from 'react-native-paper';
+import { DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationDefaultTheme, NavigationContainer } from '@react-navigation/native';
+import { MD3DarkTheme as PaperDarkTheme, MD3LightTheme as PaperLightTheme, Provider as PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProvider } from './src/context/AppContext';
+import { ThemeProvider, useThemeMode } from './src/context/ThemeContext';
 import { LocationProvider } from './src/context/LocationContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { Platform } from 'react-native';
-import { borderRadius, colors } from './src/utils/theme';
+import { borderRadius } from './src/utils/theme';
 
 // Import Leaflet CSS for web
 if (Platform.OS === 'web') {
@@ -16,11 +17,23 @@ if (Platform.OS === 'web') {
 }
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <ThemedApp />
+      </ThemeProvider>
+    </SafeAreaProvider>
+  );
+}
+
+const ThemedApp: React.FC = () => {
+  const { isDark, colors } = useThemeMode();
+
   const paperTheme = {
-    ...PaperLightTheme,
+    ...(isDark ? PaperDarkTheme : PaperLightTheme),
     roundness: borderRadius.lg,
     colors: {
-      ...PaperLightTheme.colors,
+      ...(isDark ? PaperDarkTheme.colors : PaperLightTheme.colors),
       primary: colors.primary,
       secondary: colors.secondary,
       background: colors.background,
@@ -28,18 +41,28 @@ export default function App() {
     }
   };
 
+  const navTheme = {
+    ...(isDark ? NavigationDarkTheme : NavigationDefaultTheme),
+    colors: {
+      ...(isDark ? NavigationDarkTheme.colors : NavigationDefaultTheme.colors),
+      primary: colors.primary,
+      background: colors.background,
+      card: colors.white,
+      text: colors.textPrimary,
+      border: colors.gray6,
+    },
+  };
+
   return (
-    <SafeAreaProvider>
-      <PaperProvider theme={paperTheme}>
-        <AppProvider>
-          <LocationProvider>
-            <NavigationContainer>
-              <RootNavigator />
-              <StatusBar style="auto" />
-            </NavigationContainer>
-          </LocationProvider>
-        </AppProvider>
-      </PaperProvider>
-    </SafeAreaProvider>
+    <PaperProvider theme={paperTheme}>
+      <AppProvider>
+        <LocationProvider>
+          <NavigationContainer theme={navTheme}>
+            <RootNavigator />
+            <StatusBar style={isDark ? 'light' : 'dark'} />
+          </NavigationContainer>
+        </LocationProvider>
+      </AppProvider>
+    </PaperProvider>
   );
-}
+};

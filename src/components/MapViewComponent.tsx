@@ -2,6 +2,8 @@ import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text, Platform } from 'react-native';
 import { Location, Stopover, Route, RouteSegment, TransportType } from '@/types';
 import { getTransportColor } from '@/utils/transportUtils';
+import { type ThemeColors } from '@/utils/theme';
+import { useThemeMode } from '@context/ThemeContext';
 import MapLegend from './MapLegend';
 import { getPreviewPolyline } from '@/services/api';
 import { Ionicons } from '@expo/vector-icons';
@@ -71,7 +73,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   route,
   polylineCoords = null,
   polylines = null,
-  polylineColor = '#3498db',
+  polylineColor,
   polylineWidth = 5,
   onOriginSelect,
   onDestinationSelect,
@@ -80,6 +82,10 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   showRoute = false,
   showTransferMarkers = true
 }) => {
+  const { colors } = useThemeMode();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const effectivePolylineColor = polylineColor || colors.primary;
+
   const [selectingOrigin, setSelectingOrigin] = useState<boolean>(false);
   const [selectingDestination, setSelectingDestination] = useState<boolean>(false);
   const [selectingStopover, setSelectingStopover] = useState<boolean>(false);
@@ -708,7 +714,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
                       <LeafletPolyline
                         key={`${route.id}-${segment.id}-${idx}`}
                         positions={positions}
-                        color={isWalk ? '#7f8c8d' : getTransportColor(segment.transportType)}
+                        color={isWalk ? colors.textSecondary : getTransportColor(segment.transportType)}
                         weight={isWalk ? 4 : 5}
                         dashArray={isWalk ? '3 10' : undefined}
                       />
@@ -722,7 +728,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
                       <LeafletPolyline
                         key={`transfer-connector-${idx}`}
                         positions={positions}
-                        color={'#7f8c8d'}
+                        color={colors.textSecondary}
                         weight={4}
                         dashArray={'3 10'}
                       />
@@ -750,7 +756,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
                     <LeafletPolyline
                       key={`custom-leg-${idx}`}
                       positions={p.coords.map((c) => [c.latitude, c.longitude] as [number, number])}
-                      color={p.color || polylineColor}
+                      color={p.color || effectivePolylineColor}
                       weight={typeof p.width === 'number' ? p.width : polylineWidth}
                       dashArray={p.dashed ? '3 10' : undefined}
                     />
@@ -762,7 +768,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
             {showRoute && !route && (!polylines || polylines.length === 0) && polylineCoords && polylineCoords.length >= 2 && (
               <LeafletPolyline
                 positions={polylineCoords.map(c => [c.latitude, c.longitude] as [number, number])}
-                color={polylineColor}
+                color={effectivePolylineColor}
                 weight={polylineWidth}
               />
             )}
@@ -777,7 +783,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
               onPress={() => setLegendVisible((v) => !v)}
               activeOpacity={0.8}
             >
-              <Ionicons name={legendVisible ? 'close' : 'information-circle-outline'} size={16} color="#2c3e50" />
+              <Ionicons name={legendVisible ? 'close' : 'information-circle-outline'} size={16} color={colors.textPrimary} />
               <Text style={styles.legendToggleText}>{legendVisible ? 'Hide legend' : 'Show legend'}</Text>
             </TouchableOpacity>
           </View>
@@ -923,7 +929,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         const isWalk = isWalkType(segment.transportType);
         polylinesOut.push({
           coords: pathCoordinates.map((c) => [c.latitude, c.longitude]),
-          color: isWalk ? '#7f8c8d' : getTransportColor(segment.transportType),
+          color: isWalk ? colors.textSecondary : getTransportColor(segment.transportType),
           weight: isWalk ? 4 : 5,
           dashArray: isWalk ? '3 10' : undefined
         });
@@ -933,7 +939,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         if (!Array.isArray(conn) || conn.length < 2) continue;
         polylinesOut.push({
           coords: conn.map((c) => [c.latitude, c.longitude]),
-          color: '#7f8c8d',
+          color: colors.textSecondary,
           weight: 4,
           dashArray: '3 10'
         });
@@ -946,7 +952,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         if (!Array.isArray(p?.coords) || p.coords.length < 2) continue;
         polylinesOut.push({
           coords: p.coords.map((c) => [c.latitude, c.longitude]),
-          color: p.color || polylineColor,
+          color: p.color || effectivePolylineColor,
           weight: typeof p.width === 'number' ? p.width : polylineWidth,
           dashArray: p.dashed ? '4 8' : undefined
         });
@@ -956,7 +962,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     if (!route && showRoute && (!polylines || polylines.length === 0) && polylineCoords && polylineCoords.length >= 2) {
       polylinesOut.push({
         coords: polylineCoords.map((c) => [c.latitude, c.longitude]),
-        color: polylineColor,
+        color: effectivePolylineColor,
         weight: polylineWidth
       });
     }
@@ -973,7 +979,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     ) {
       polylinesOut.push({
         coords: previewCoords.map((c) => [c.latitude, c.longitude]),
-        color: '#3498db',
+        color: effectivePolylineColor,
         weight: 5
       });
     }
@@ -994,7 +1000,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     route,
     polylines,
     polylineCoords,
-    polylineColor,
+    effectivePolylineColor,
     polylineWidth,
     showRoute,
     showTransferMarkers,
@@ -1183,7 +1189,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
             onPress={() => setLegendVisible(v => !v)}
             activeOpacity={0.8}
           >
-            <Ionicons name={legendVisible ? 'close' : 'information-circle-outline'} size={16} color="#2c3e50" />
+            <Ionicons name={legendVisible ? 'close' : 'information-circle-outline'} size={16} color={colors.textPrimary} />
             <Text style={styles.legendToggleText}>{legendVisible ? 'Hide legend' : 'Show legend'}</Text>
           </TouchableOpacity>
         </View>
@@ -1281,7 +1287,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     position: 'relative'
@@ -1299,7 +1305,7 @@ const styles = StyleSheet.create({
   controlButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 20,
@@ -1343,12 +1349,12 @@ const styles = StyleSheet.create({
     }),
   },
   controlButtonActive: {
-    backgroundColor: '#3498db'
+    backgroundColor: colors.primary
   },
   controlText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#2c3e50',
+    color: colors.textPrimary,
     marginLeft: 4
   },
   controlTextActive: {
@@ -1359,7 +1365,7 @@ const styles = StyleSheet.create({
     bottom: 16,
     left: 16,
     right: 16,
-    backgroundColor: '#3498db',
+    backgroundColor: colors.primary,
     padding: 12,
     borderRadius: 8,
     ...Platform.select({
@@ -1386,7 +1392,7 @@ const styles = StyleSheet.create({
   legendToggleButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: colors.white,
     borderRadius: 18,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1409,7 +1415,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     fontSize: 12,
     fontWeight: '700',
-    color: '#2c3e50'
+    color: colors.textPrimary
   },
   instructionText: {
     color: '#fff',
@@ -1419,7 +1425,7 @@ const styles = StyleSheet.create({
   },
   webMapContainer: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
   webMapPlaceholder: {
     flex: 1,
@@ -1430,18 +1436,18 @@ const styles = StyleSheet.create({
   webMapText: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#2c3e50',
+    color: colors.textPrimary,
     marginTop: 16,
   },
   webMapSubtext: {
     fontSize: 14,
-    color: '#7f8c8d',
+    color: colors.textSecondary,
     marginTop: 8,
     textAlign: 'center',
   },
   webLocationText: {
     fontSize: 14,
-    color: '#2c3e50',
+    color: colors.textPrimary,
     marginTop: 8,
     textAlign: 'center',
   },
@@ -1449,7 +1455,7 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#2c3e50',
+    backgroundColor: colors.textPrimary,
     borderWidth: 2,
     borderColor: '#fff'
   },
@@ -1509,12 +1515,12 @@ const styles = StyleSheet.create({
   transferCalloutTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#2c3e50',
+    color: colors.textPrimary,
     marginBottom: 4
   },
   transferCalloutRow: {
     fontSize: 12,
-    color: '#2c3e50',
+    color: colors.textPrimary,
     marginBottom: 2
   }
 });
