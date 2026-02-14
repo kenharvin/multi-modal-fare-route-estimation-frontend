@@ -64,6 +64,18 @@ interface MapViewComponentProps {
    * Per-segment start/end pin markers are intentionally not rendered to avoid clutter.
    */
   showTransferMarkers?: boolean;
+  /**
+   * Optional bounds padding used when auto-fitting route geometry.
+   * Useful when overlays (e.g., bottom sheets) cover part of the map.
+   */
+  fitBoundsPadding?: {
+    top?: number;
+    right?: number;
+    bottom?: number;
+    left?: number;
+  };
+  /** Maximum zoom level allowed when auto-fitting bounds (lower = more zoomed out). */
+  fitBoundsMaxZoom?: number;
 }
 
 const MapViewComponent: React.FC<MapViewComponentProps> = ({
@@ -80,7 +92,9 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   onStopoverSelect,
   autoSelectMode = null,
   showRoute = false,
-  showTransferMarkers = true
+  showTransferMarkers = true,
+  fitBoundsPadding,
+  fitBoundsMaxZoom
 }) => {
   const { colors, isDark } = useThemeMode();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -99,6 +113,14 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   const [selectingStopover, setSelectingStopover] = useState<boolean>(false);
   const [previewCoords, setPreviewCoords] = useState<{ latitude: number; longitude: number }[] | null>(null);
   const [legendVisible, setLegendVisible] = useState<boolean>(Platform.OS === 'web');
+
+  const fitPadding = {
+    top: Math.max(0, Number(fitBoundsPadding?.top ?? 56)),
+    right: Math.max(0, Number(fitBoundsPadding?.right ?? 56)),
+    bottom: Math.max(0, Number(fitBoundsPadding?.bottom ?? 56)),
+    left: Math.max(0, Number(fitBoundsPadding?.left ?? 56))
+  };
+  const fitMaxZoom = Math.max(1, Math.min(20, Number(fitBoundsMaxZoom ?? 14)));
 
   // Allow parent to programmatically arm a selection mode (e.g., pick stopover from map).
   useEffect(() => {
@@ -465,6 +487,113 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     return markers;
   };
 
+  const defaultFitPoints: [number, number][] = (() => {
+    const points: [number, number][] = [];
+
+    const pushCoord = (coord?: { latitude: number; longitude: number } | null) => {
+      if (!coord || !isValidCoord(coord)) return;
+      points.push([coord.latitude, coord.longitude]);
+    };
+
+    pushCoord(origin?.coordinates);
+    pushCoord(destination?.coordinates);
+    (stopovers || []).forEach((s) => pushCoord(s?.location?.coordinates));
+
+    if (route?.segments?.length) {
+      const { segPaths, connectors } = computeRenderPaths(route.segments);
+      segPaths.forEach((path) => {
+        if (!Array.isArray(path) || path.length < 2) return;
+        path.forEach((coord) => pushCoord(coord));
+      });
+      connectors.forEach((path) => {
+        if (!Array.isArray(path) || path.length < 2) return;
+        path.forEach((coord) => pushCoord(coord));
+      });
+    } else if (showRoute && polylines && polylines.length > 0) {
+      polylines.forEach((polyline) => {
+        if (!Array.isArray(polyline?.coords) || polyline.coords.length < 2) return;
+        polyline.coords.forEach((coord) => pushCoord(coord));
+      });
+    } else if (showRoute && polylineCoords && polylineCoords.length >= 2) {
+      polylineCoords.forEach((coord) => pushCoord(coord));
+    } else if (previewCoords && previewCoords.length >= 2) {
+      previewCoords.forEach((coord) => pushCoord(coord));
+    }
+
+    if (showTransferMarkers && route?.segments?.length) {
+      getTransferMarkers().forEach((marker) => pushCoord(marker.coordinate));
+    }
+
+    return points;
+  })();
+
+  const endpointReferenceFitPoints: [number, number][] = (() => {
+    const originCoord = origin?.coordinates;
+    const destinationCoord = destination?.coordinates;
+    if (!isValidCoord(originCoord) || !isValidCoord(destinationCoord)) return [];
+
+    const midLat = (originCoord.latitude + destinationCoord.latitude) / 2;
+    const midLon = (originCoord.longitude + destinationCoord.longitude) / 2;
+
+    const latSpan = Math.abs(originCoord.latitude - destinationCoord.latitude);
+    const lonSpan = Math.abs(originCoord.longitude - destinationCoord.longitude);
+
+    const halfLat = Math.max((latSpan / 2) * 1.8, 0.0045);
+    const halfLon = Math.max((lonSpan / 2) * 1.8, 0.0045);
+
+    return [
+      [originCoord.latitude, originCoord.longitude],
+      [destinationCoord.latitude, destinationCoord.longitude],
+      [midLat + halfLat, midLon + halfLon],
+      [midLat + halfLat, midLon - halfLon],
+      [midLat - halfLat, midLon + halfLon],
+      [midLat - halfLat, midLon - halfLon]
+    ];
+  })();
+
+  const effectiveFitPoints: [number, number][] =
+    endpointReferenceFitPoints.length >= 2
+      ? [...defaultFitPoints, ...endpointReferenceFitPoints]
+      : defaultFitPoints;
+
+  const customPolylineConnectors: {
+    coords: { latitude: number; longitude: number }[];
+    color: string;
+    width: number;
+    dashed: boolean;
+  }[] = (() => {
+    if (route || !showRoute || !polylines || polylines.length < 2) return [];
+
+    const validLegs = polylines
+      .map((p) => (Array.isArray(p?.coords) ? p.coords.filter(isValidCoord) : []))
+      .filter((coords) => coords.length >= 2);
+
+    if (validLegs.length < 2) return [];
+
+    const connectors: {
+      coords: { latitude: number; longitude: number }[];
+      color: string;
+      width: number;
+      dashed: boolean;
+    }[] = [];
+
+    for (let i = 0; i < validLegs.length - 1; i++) {
+      const currentEnd = validLegs[i][validLegs[i].length - 1];
+      const nextStart = validLegs[i + 1][0];
+      const gapM = haversineM(currentEnd, nextStart);
+      if (gapM > 15 && gapM <= 5000) {
+        connectors.push({
+          coords: [currentEnd, nextStart],
+          color: colors.textSecondary,
+          width: 4,
+          dashed: true
+        });
+      }
+    }
+
+    return connectors;
+  })();
+
   let webReturn: React.ReactElement | null = null;
 
   // Web map implementation with Leaflet
@@ -592,6 +721,16 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
           <MapContainer
             center={center}
             zoom={13}
+            bounds={effectiveFitPoints.length >= 2 ? effectiveFitPoints : undefined}
+            boundsOptions={
+              effectiveFitPoints.length >= 2
+                ? {
+                    paddingTopLeft: [fitPadding.left, fitPadding.top],
+                    paddingBottomRight: [fitPadding.right, fitPadding.bottom],
+                    maxZoom: fitMaxZoom
+                  }
+                : undefined
+            }
             style={{ width: '100%', height: '100%' }}
           >
             {/* Base OSM map */}
@@ -786,6 +925,16 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
                       dashArray={p.dashed ? '3 10' : undefined}
                     />
                   ))}
+
+                {customPolylineConnectors.map((conn, idx) => (
+                  <LeafletPolyline
+                    key={`custom-connector-${idx}`}
+                    positions={conn.coords.map((c) => [c.latitude, c.longitude] as [number, number])}
+                    color={conn.color}
+                    weight={conn.width}
+                    dashArray={conn.dashed ? '3 10' : undefined}
+                  />
+                ))}
               </>
             )}
 
@@ -982,6 +1131,16 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
           dashArray: p.dashed ? '4 8' : undefined
         });
       }
+
+      for (const conn of customPolylineConnectors) {
+        if (!Array.isArray(conn?.coords) || conn.coords.length < 2) continue;
+        polylinesOut.push({
+          coords: conn.coords.map((c) => [c.latitude, c.longitude]),
+          color: conn.color,
+          weight: conn.width,
+          dashArray: conn.dashed ? '4 8' : undefined
+        });
+      }
     }
 
     if (!route && showRoute && (!polylines || polylines.length === 0) && polylineCoords && polylineCoords.length >= 2) {
@@ -1015,7 +1174,8 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     return {
       center: { lat: centerLat, lon: centerLon, zoom: 13 },
       markers,
-      polylines: polylinesOut
+      polylines: polylinesOut,
+      fit_points: effectiveFitPoints
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -1029,7 +1189,9 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     polylineWidth,
     showRoute,
     showTransferMarkers,
-    previewCoords
+    previewCoords,
+    customPolylineConnectors,
+    effectiveFitPoints
   ]);
 
   const nativeLeafletHtml = useMemo(() => {
@@ -1127,12 +1289,21 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
 
         // Fit map to visible geometry/markers.
         try {
-          const pts = [];
-          (data.markers || []).forEach(m => pts.push([m.lat, m.lon]));
-          (data.polylines || []).forEach(p => (p.coords || []).forEach(c => pts.push(c)));
+          const pts = Array.isArray(data.fit_points) && data.fit_points.length >= 2
+            ? data.fit_points
+            : (() => {
+                const fallback = [];
+                (data.markers || []).forEach(m => fallback.push([m.lat, m.lon]));
+                (data.polylines || []).forEach(p => (p.coords || []).forEach(c => fallback.push(c)));
+                return fallback;
+              })();
           if (pts.length >= 2) {
             const b = L.latLngBounds(pts);
-            map.fitBounds(b, { padding: [24, 24] });
+            map.fitBounds(b, {
+              paddingTopLeft: [${fitPadding.left}, ${fitPadding.top}],
+              paddingBottomRight: [${fitPadding.right}, ${fitPadding.bottom}],
+              maxZoom: ${fitMaxZoom}
+            });
           } else if (pts.length === 1) {
             map.setView(pts[0], data.center.zoom || 14);
           }
@@ -1150,7 +1321,17 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     </script>
   </body>
 </html>`;
-  }, [baseTileAttribution, baseTileUrl, isDark, nativeLeafletPayload]);
+  }, [
+    baseTileAttribution,
+    baseTileUrl,
+    fitPadding.bottom,
+    fitPadding.left,
+    fitPadding.right,
+    fitPadding.top,
+    fitMaxZoom,
+    isDark,
+    nativeLeafletPayload
+  ]);
 
   const handleLeafletMessage = (event: any) => {
     try {

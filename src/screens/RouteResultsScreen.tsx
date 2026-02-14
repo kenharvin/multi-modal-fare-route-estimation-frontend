@@ -30,10 +30,10 @@ const RouteResultsScreen: React.FC = () => {
   const hasFetchedRef = useRef<boolean>(false);
   const [isGeometryLoading, setIsGeometryLoading] = useState<boolean>(false);
   const [geometryFetchedIds, setGeometryFetchedIds] = useState<Set<string>>(new Set());
-  const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
+  const [sheetExpanded, setSheetExpanded] = useState<boolean>(true);
 
-  const sheetProgress = useRef(new Animated.Value(0)).current; // 0=collapsed, 1=expanded
-  const isExpandedRef = useRef<boolean>(false);
+  const sheetProgress = useRef(new Animated.Value(1)).current; // 0=collapsed, 1=expanded
+  const isExpandedRef = useRef<boolean>(true);
   const winH = Dimensions.get('window').height;
   const sheetCollapsedH = 220;
   const sheetExpandedH = Math.max(560, Math.round(winH * 0.92));
@@ -170,6 +170,8 @@ const RouteResultsScreen: React.FC = () => {
           origin={origin}
           destination={destination}
           route={selectedRoute}
+          fitBoundsPadding={{ top: 64, right: 64, bottom: 520, left: 64 }}
+          fitBoundsMaxZoom={11}
         />
         {isGeometryLoading && (
           <View style={styles.mapOverlay}>

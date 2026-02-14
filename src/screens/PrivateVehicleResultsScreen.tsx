@@ -26,10 +26,10 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const { isLoading, setIsLoading, setError } = useApp();
   
   const [routeResult, setRouteResult] = useState<PrivateVehicleRoute | null>(null);
-  const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
+  const [sheetExpanded, setSheetExpanded] = useState<boolean>(true);
 
-  const sheetProgress = useRef(new Animated.Value(0)).current; // 0=collapsed, 1=expanded
-  const isExpandedRef = useRef<boolean>(false);
+  const sheetProgress = useRef(new Animated.Value(1)).current; // 0=collapsed, 1=expanded
+  const isExpandedRef = useRef<boolean>(true);
   const winH = Dimensions.get('window').height;
   const sheetCollapsedH = 220;
   const sheetExpandedH = Math.max(560, Math.round(winH * 0.92));
@@ -127,14 +127,67 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const legColors = ['#1e88e5', '#8e24aa', '#43a047', '#fb8c00'];
   const legs = Array.isArray(routeResult.legs) ? routeResult.legs : [];
   const hasLegBreakdown = legs.length >= 2;
+
+  const isValidCoord = (c: any): c is { latitude: number; longitude: number } => {
+    const lat = c?.latitude;
+    const lon = c?.longitude;
+    return (
+      typeof lat === 'number' &&
+      typeof lon === 'number' &&
+      Number.isFinite(lat) &&
+      Number.isFinite(lon) &&
+      lat >= -90 &&
+      lat <= 90 &&
+      lon >= -180 &&
+      lon <= 180
+    );
+  };
+
+  const haversineM = (a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) => {
+    const R = 6371000;
+    const toRad = (x: number) => (x * Math.PI) / 180;
+    const dLat = toRad(b.latitude - a.latitude);
+    const dLon = toRad(b.longitude - a.longitude);
+    const lat1 = toRad(a.latitude);
+    const lat2 = toRad(b.latitude);
+    const s1 = Math.sin(dLat / 2);
+    const s2 = Math.sin(dLon / 2);
+    const h = s1 * s1 + Math.cos(lat1) * Math.cos(lat2) * s2 * s2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  };
+
+  const shouldAnchor = (a?: { latitude: number; longitude: number }, b?: { latitude: number; longitude: number }) => {
+    if (!a || !b || !isValidCoord(a) || !isValidCoord(b)) return false;
+    const d = haversineM(a, b);
+    return d > 12 && d <= 5000;
+  };
+
   const legPolylines = hasLegBreakdown
     ? legs
-        .filter((l) => Array.isArray(l.geometry) && l.geometry.length >= 2)
-        .map((l, idx) => ({
-          coords: l.geometry!,
-          color: legColors[idx % legColors.length],
-          width: 5
-        }))
+        .map((l, idx) => {
+          const baseCoords = Array.isArray(l.geometry) ? l.geometry.filter(isValidCoord) : [];
+          if (baseCoords.length < 2) return null;
+
+          const anchoredCoords = [...baseCoords];
+          const legOrigin = l.origin?.coordinates;
+          const legDestination = l.destination?.coordinates;
+
+          if (isValidCoord(legOrigin) && shouldAnchor(legOrigin, anchoredCoords[0])) {
+            anchoredCoords.unshift(legOrigin);
+          }
+
+          const last = anchoredCoords[anchoredCoords.length - 1];
+          if (isValidCoord(legDestination) && shouldAnchor(last, legDestination)) {
+            anchoredCoords.push(legDestination);
+          }
+
+          return {
+            coords: anchoredCoords,
+            color: legColors[idx % legColors.length],
+            width: 5
+          };
+        })
+        .filter((p): p is { coords: { latitude: number; longitude: number }[]; color: string; width: number } => !!p)
     : null;
 
   const computeLegSpeedKph = (distanceKm: number, timeMin: number) => {
@@ -153,6 +206,8 @@ const PrivateVehicleResultsScreen: React.FC = () => {
           polylines={legPolylines}
           polylineCoords={!legPolylines ? routeResult.geometry : null}
           showRoute={true}
+          fitBoundsPadding={{ top: 64, right: 64, bottom: 520, left: 64 }}
+          fitBoundsMaxZoom={11}
         />
       </View>
 
