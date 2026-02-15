@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Route, TransportType } from '@/types';
 import { getTransportStyle } from '@/utils/transportUtils';
@@ -10,7 +10,7 @@ interface RouteCardProps {
   route: Route;
   isSelected: boolean;
   rank?: number;
-  onSelect?: () => void;
+  onSelect?: (route: Route) => void;
 }
 
 type StepRow = {
@@ -27,13 +27,13 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
   const { colors } = useThemeMode();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const titleCaseWord = (w: string) => {
+  const titleCaseWord = useCallback((w: string) => {
     if (!w) return w;
     if (w.length <= 4 && w.toUpperCase() === w) return w;
     return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-  };
+  }, []);
 
-  const cleanRouteName = (raw: string | undefined | null): string | null => {
+  const cleanRouteName = useCallback((raw: string | undefined | null): string | null => {
     const name = String(raw || '').trim();
     if (!name) return null;
 
@@ -49,9 +49,9 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
     }
 
     return name;
-  };
+  }, [titleCaseWord]);
 
-  const cleanServiceLabel = (seg: any): string => {
+  const cleanServiceLabel = useCallback((seg: any): string => {
     const transportType: TransportType = seg?.transportType;
     const mode = String(seg?.mode || '').toLowerCase();
 
@@ -64,9 +64,10 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
 
     const transportStyle = getTransportStyle(transportType);
     return transportStyle.label || 'Transit';
-  };
+  }, []);
 
-  const stepRows: StepRow[] = (() => {
+  const stepRows: StepRow[] = useMemo(() => {
+    if (!isSelected) return [];
     const segments = route.segments || [];
     if (segments.length === 0) return [];
 
@@ -161,7 +162,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
     }
 
     return rows;
-  })();
+  }, [cleanRouteName, cleanServiceLabel, colors.error, colors.primary, isSelected, route.segments]);
 
   const content = (
     <View style={[styles.container, isSelected && styles.containerSelected]}>
@@ -268,7 +269,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
 
   if (onSelect) {
     return (
-      <TouchableOpacity onPress={onSelect} activeOpacity={0.85}>
+      <TouchableOpacity onPress={() => onSelect(route)} activeOpacity={0.85}>
         {content}
       </TouchableOpacity>
     );
@@ -463,4 +464,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   }
 });
 
-export default RouteCard;
+export default React.memo(RouteCard, (prev, next) => (
+  prev.route === next.route &&
+  prev.isSelected === next.isSelected &&
+  prev.rank === next.rank &&
+  prev.onSelect === next.onSelect
+));

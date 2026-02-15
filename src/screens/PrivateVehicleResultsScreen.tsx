@@ -74,9 +74,12 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         preferences
       );
       setRouteResult(result);
-    } catch {
-      setError('Failed to calculate route. Please try again.');
-      Alert.alert('Error', 'Failed to calculate route');
+    } catch (err: any) {
+      const msg = typeof err?.message === 'string' && err.message.trim().length > 0
+        ? err.message
+        : 'Failed to calculate route. Please try again.';
+      setError(msg);
+      Alert.alert('Error', msg);
     } finally {
       setIsLoading(false);
     }

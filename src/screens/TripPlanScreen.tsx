@@ -204,7 +204,7 @@ const TripPlanScreen: React.FC = () => {
                   route={route}
                   isSelected={selectedNewRoute?.id === route.id}
                   rank={index + 1}
-                  onSelect={() => handleSelectNewRoute(route)}
+                  onSelect={handleSelectNewRoute}
                 />
               ))}
               <View style={styles.buttonRow}>

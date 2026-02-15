@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Alert, Animated, Dimensions, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Alert, Animated, Dimensions, Pressable, FlatList, ListRenderItem, Platform } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
@@ -26,10 +26,12 @@ const RouteResultsScreen: React.FC = () => {
   const { isLoading, setIsLoading, setError } = useApp();
   
   const [routes, setRoutes] = useState<Route[]>([]);
-  const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const [selectedRouteGeometry, setSelectedRouteGeometry] = useState<Route | null>(null);
   const hasFetchedRef = useRef<boolean>(false);
+  const isMountedRef = useRef<boolean>(true);
   const [isGeometryLoading, setIsGeometryLoading] = useState<boolean>(false);
-  const [geometryFetchedIds, setGeometryFetchedIds] = useState<Set<string>>(new Set());
+  const geometryCacheRef = useRef<Map<string, Route>>(new Map());
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(true);
 
   const sheetProgress = useRef(new Animated.Value(1)).current; // 0=collapsed, 1=expanded
@@ -66,12 +68,40 @@ const RouteResultsScreen: React.FC = () => {
     }).start();
   };
 
+  const selectedRoute = useMemo(() => {
+    if (!selectedRouteId) return null;
+    const base = routes.find((r) => r.id === selectedRouteId);
+    if (!base) return null;
+    return selectedRouteGeometry?.id === selectedRouteId ? selectedRouteGeometry : base;
+  }, [routes, selectedRouteGeometry, selectedRouteId]);
+
+  const cacheRouteGeometry = useCallback((updatedRoute: Route) => {
+    const cache = geometryCacheRef.current;
+    cache.delete(updatedRoute.id);
+    cache.set(updatedRoute.id, updatedRoute);
+    const maxCachedRoutes = 2;
+    while (cache.size > maxCachedRoutes) {
+      const oldestKey = cache.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      cache.delete(oldestKey);
+    }
+  }, []);
+
+  useEffect(() => {
+    const geometryCache = geometryCacheRef.current;
+    return () => {
+      isMountedRef.current = false;
+      geometryCache.clear();
+    };
+  }, []);
+
   const loadRoutes = useCallback(async () => {
     try {
       setIsLoading(true);
       // Quick reachability check to avoid confusing network errors
       const ok = await pingBackend();
       if (!ok) {
+        if (!isMountedRef.current) return;
         setError('Backend unreachable. Check IP, firewall, and Wi‑Fi.');
         return;
       }
@@ -80,15 +110,21 @@ const RouteResultsScreen: React.FC = () => {
         maxTransfers,
         preferredModes
       });
+      if (!isMountedRef.current) return;
       setRoutes(data);
+      geometryCacheRef.current.clear();
+      setSelectedRouteGeometry(null);
       if (data.length > 0) {
-        setSelectedRoute(data[0]); // Select best route by default
+        setSelectedRouteId(data[0].id); // Select best route by default
       }
     } catch {
+      if (!isMountedRef.current) return;
       setError('Failed to fetch routes. Please try again.');
       Alert.alert('Error', 'Failed to fetch routes');
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [budget, destination, maxTransfers, origin, preference, preferredModes, setError, setIsLoading]);
 
@@ -99,32 +135,48 @@ const RouteResultsScreen: React.FC = () => {
     void loadRoutes();
   }, [loadRoutes]);
 
-  const handleSelectRoute = async (route: Route) => {
-    setSelectedRoute(route);
+  const handleSelectRoute = useCallback(async (route: Route) => {
+    setSelectedRouteId(route.id);
     // Fetch accurate polylines on demand (on tap).
     // Even if compact mode returned preview geometry, we still fetch full per-leg geometry once.
     try {
+      const isSameSelection = selectedRouteId === route.id;
+      const cached = geometryCacheRef.current.get(route.id);
+      if (cached && !isSameSelection) {
+        if (!isMountedRef.current) return;
+        setSelectedRouteGeometry(cached);
+        return;
+      }
+
+      setSelectedRouteGeometry(null);
       setIsGeometryLoading(true);
-      const isSameSelection = selectedRoute?.id === route.id;
       // If the user taps the already-selected route again, treat it as a manual refresh.
       // This helps when backend geometry/caches have changed.
-      if (!geometryFetchedIds.has(route.id) || isSameSelection) {
-        const updated = await fetchRouteGeometry(route);
-        setSelectedRoute(updated);
-        setRoutes(prev => prev.map(r => (r.id === route.id ? updated : r)));
-        setGeometryFetchedIds(prev => {
-          const next = new Set(prev);
-          next.add(route.id);
-          return next;
-        });
-      }
+      const updated = await fetchRouteGeometry(route);
+      if (!isMountedRef.current) return;
+      cacheRouteGeometry(updated);
+      setSelectedRouteGeometry(updated);
     } catch (e) {
+      if (!isMountedRef.current) return;
       console.warn('[RouteResults] Failed to fetch route geometry:', e);
       Alert.alert('Map preview unavailable', 'Could not load the route polyline. Please try selecting the route again.');
     } finally {
-      setIsGeometryLoading(false);
+      if (isMountedRef.current) {
+        setIsGeometryLoading(false);
+      }
     }
-  };
+  }, [cacheRouteGeometry, selectedRouteId]);
+
+  const keyExtractor = useCallback((item: Route) => item.id, []);
+
+  const renderRouteItem: ListRenderItem<Route> = useCallback(({ item, index }) => (
+    <RouteCard
+      route={item}
+      isSelected={selectedRoute?.id === item.id}
+      rank={index + 1}
+      onSelect={handleSelectRoute}
+    />
+  ), [handleSelectRoute, selectedRoute?.id]);
 
   const handleAddDestination = () => {
     if (selectedRoute) {
@@ -199,9 +251,17 @@ const RouteResultsScreen: React.FC = () => {
           </Text>
         </Pressable>
 
-        <Animated.ScrollView
+        <FlatList
           style={styles.routesList}
           contentContainerStyle={styles.routesListContent}
+          data={routes}
+          keyExtractor={keyExtractor}
+          renderItem={renderRouteItem}
+          removeClippedSubviews={Platform.OS === 'android'}
+          initialNumToRender={4}
+          maxToRenderPerBatch={4}
+          updateCellsBatchingPeriod={40}
+          windowSize={5}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
           scrollEventThrottle={16}
@@ -214,17 +274,7 @@ const RouteResultsScreen: React.FC = () => {
             const y = e?.nativeEvent?.contentOffset?.y ?? 0;
             if (y <= 0) collapseSheet();
           }}
-        >
-          {routes.map((r, index) => (
-            <RouteCard
-              key={r.id}
-              route={r}
-              isSelected={selectedRoute?.id === r.id}
-              rank={index + 1}
-              onSelect={() => handleSelectRoute(r)}
-            />
-          ))}
-        </Animated.ScrollView>
+        />
 
         {selectedRoute && (
           <View style={styles.footer}>

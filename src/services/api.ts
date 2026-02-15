@@ -631,18 +631,33 @@ export const calculatePrivateVehicleRoute = async (
       ],
       source: 'backend'
     };
-  } catch (error) {
+  } catch (error: any) {
     const message = formatAxiosError(error);
-    // Use warn/log to reduce noisy red LogBox entries while still surfacing useful info.
-    console.warn('[PrivateVehicle] Route request failed; falling back to mock:', message);
+    const status = error?.response?.status;
+    const code = String(error?.code || '');
+    const isAxiosError = !!error?.isAxiosError;
+    const isTimeout = code === 'ECONNABORTED' || /timeout/i.test(String(error?.message || ''));
+    const isNetwork = code === 'ERR_NETWORK' || (isAxiosError && !status);
+    const isServerUnavailable = status === 502 || status === 503 || status === 504;
+    const shouldFallbackToMock = isTimeout || isNetwork || isServerUnavailable;
 
-    const mock = getMockPrivateVehicleRoute(origin, destination, vehicle, fuelPrice, stopovers);
-    return {
-      ...mock,
-      source: 'mock',
-      errorMessage: message,
-      geometry: undefined
-    };
+    if (shouldFallbackToMock) {
+      console.warn('[PrivateVehicle] Route request failed; falling back to mock:', message);
+      const mock = getMockPrivateVehicleRoute(origin, destination, vehicle, fuelPrice, stopovers);
+      return {
+        ...mock,
+        source: 'mock',
+        errorMessage: message,
+        geometry: undefined
+      };
+    }
+
+    console.error('[PrivateVehicle] Route request failed without fallback:', message);
+    const backendDetail =
+      error?.response?.data?.detail ||
+      error?.response?.data?.message ||
+      error?.response?.data?.error;
+    throw new Error(typeof backendDetail === 'string' && backendDetail.length > 0 ? backendDetail : message);
   }
 };
 
