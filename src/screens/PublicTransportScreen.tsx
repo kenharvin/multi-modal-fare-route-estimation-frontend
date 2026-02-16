@@ -223,6 +223,7 @@ const PublicTransportScreen: React.FC = () => {
           destination={selectedDestination}
           onOriginSelect={setSelectedOrigin}
           onDestinationSelect={setSelectedDestination}
+          boundaryMode="public"
         />
 
         <Animated.View

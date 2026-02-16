@@ -204,14 +204,14 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
 
         <View style={styles.infoCell}>
           <Text style={styles.infoLabel}>Time</Text>
-          <Text style={styles.infoValue} numberOfLines={1}>
+          <Text style={[styles.infoValue, styles.infoValueWrap]} numberOfLines={2}>
             {formatTimeRange(route.totalTime)}
           </Text>
         </View>
 
         <View style={styles.infoCell}>
           <Text style={styles.infoLabel}>Transfers</Text>
-          <Text style={styles.infoValue} numberOfLines={1}>
+          <Text style={[styles.infoValue, styles.infoValueWrap]} numberOfLines={2}>
             {route.totalTransfers === 0
               ? 'None'
               : `${route.totalTransfers} transfer${route.totalTransfers === 1 ? '' : 's'}`}
@@ -220,7 +220,7 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
 
         <View style={styles.infoCell}>
           <Text style={styles.infoLabel}>Arrive (ETA)</Text>
-          <Text style={styles.infoValue} numberOfLines={1}>
+          <Text style={[styles.infoValue, styles.infoValueWrap]} numberOfLines={2}>
             {formatArrivalTimeRange(route.totalTime)}
           </Text>
         </View>
@@ -357,11 +357,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexWrap: 'wrap',
     backgroundColor: colors.gray7,
     borderRadius: borderRadius.xl,
-    padding: spacing.md
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.gray6
   },
   infoCell: {
     width: '50%',
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.xs
   },
   infoLabel: {
@@ -374,6 +376,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontWeight: '700',
     color: colors.textPrimary,
     marginTop: 2
+  },
+  infoValueWrap: {
+    lineHeight: 18,
+    flexShrink: 1
   },
   tapHintText: {
     textAlign: 'center',

@@ -142,6 +142,7 @@ const TripPlanScreen: React.FC = () => {
           origin={tripPlan.destinations[0]}
           destination={tripPlan.destinations[tripPlan.destinations.length - 1]}
           route={tripPlan.routes.length > 0 ? tripPlan.routes[0] : undefined}
+          boundaryMode="public"
         />
       </View>
 

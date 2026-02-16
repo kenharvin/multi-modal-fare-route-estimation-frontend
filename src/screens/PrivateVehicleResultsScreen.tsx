@@ -209,6 +209,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
           polylines={legPolylines}
           polylineCoords={!legPolylines ? routeResult.geometry : null}
           showRoute={true}
+          boundaryMode="private"
           fitBoundsPadding={{ top: 64, right: 64, bottom: 520, left: 64 }}
           fitBoundsMaxZoom={11}
         />

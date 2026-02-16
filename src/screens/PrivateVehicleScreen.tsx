@@ -199,6 +199,7 @@ const PrivateVehicleScreen: React.FC = () => {
           stopovers={stopovers}
           onStopoverSelect={handleStopoverSelectedFromMap}
           autoSelectMode={stopoverPickActive ? 'stopover' : null}
+          boundaryMode="private"
         />
 
         <Animated.View

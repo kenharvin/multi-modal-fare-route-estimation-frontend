@@ -69,9 +69,11 @@ export const formatTimeRange = (minutes: number, options: TimeRangeOptions = {})
 export const formatArrivalTimeRange = (minutesFromNow: number, options: TimeRangeOptions = {}): string => {
   const { min, max } = getTimeRangeMinutes(minutesFromNow, options);
   const fmt = (d: Date) => {
-    const hh = d.getHours().toString().padStart(2, '0');
-    const mm = d.getMinutes().toString().padStart(2, '0');
-    return `${hh}:${mm}`;
+    return d.toLocaleTimeString([], {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
   };
 
   const now = Date.now();

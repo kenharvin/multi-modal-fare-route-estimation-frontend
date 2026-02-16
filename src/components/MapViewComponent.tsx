@@ -5,7 +5,7 @@ import { getTransportColor } from '@/utils/transportUtils';
 import { type ThemeColors } from '@/utils/theme';
 import { useThemeMode } from '@context/ThemeContext';
 import MapLegend from './MapLegend';
-import { getPreviewPolyline } from '@/services/api';
+import { getPreviewPolyline, getCoverageBoundaries, type ModeCoverageBoundaries } from '@/services/api';
 import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 
@@ -14,6 +14,7 @@ let MapContainer: any = null;
 let TileLayer: any = null;
 let LeafletMarker: any = null;
 let LeafletPolyline: any = null;
+let LeafletPolygon: any = null;
 let Popup: any = null;
 
 if (Platform.OS === 'web') {
@@ -25,6 +26,7 @@ if (Platform.OS === 'web') {
     TileLayer = LeafletModule.TileLayer;
     LeafletMarker = LeafletModule.Marker;
     LeafletPolyline = LeafletModule.Polyline;
+    LeafletPolygon = LeafletModule.Polygon;
     Popup = LeafletModule.Popup;
   } catch {
     console.log('Leaflet not available');
@@ -76,6 +78,8 @@ interface MapViewComponentProps {
   };
   /** Maximum zoom level allowed when auto-fitting bounds (lower = more zoomed out). */
   fitBoundsMaxZoom?: number;
+  /** Controls which coverage border to show. */
+  boundaryMode?: 'public' | 'private' | 'none';
 }
 
 const MapViewComponent: React.FC<MapViewComponentProps> = ({
@@ -94,7 +98,8 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   showRoute = false,
   showTransferMarkers = true,
   fitBoundsPadding,
-  fitBoundsMaxZoom
+  fitBoundsMaxZoom,
+  boundaryMode = 'none'
 }) => {
   const { colors, isDark } = useThemeMode();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -112,6 +117,10 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   const [selectingDestination, setSelectingDestination] = useState<boolean>(false);
   const [selectingStopover, setSelectingStopover] = useState<boolean>(false);
   const [previewCoords, setPreviewCoords] = useState<{ latitude: number; longitude: number }[] | null>(null);
+  const [modeBoundaries, setModeBoundaries] = useState<Pick<ModeCoverageBoundaries, 'publicOuter' | 'privateOuter'>>({
+    publicOuter: [],
+    privateOuter: []
+  });
   const [legendVisible, setLegendVisible] = useState<boolean>(Platform.OS === 'web');
 
   const fitPadding = {
@@ -194,6 +203,34 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     polylinesLen,
     polylines
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const boundaries = await getCoverageBoundaries();
+        if (!cancelled) {
+          setModeBoundaries({
+            publicOuter: boundaries.publicOuter,
+            privateOuter: boundaries.privateOuter
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setModeBoundaries({ publicOuter: [], privateOuter: [] });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const activeBoundaryCoords = useMemo(() => {
+    if (boundaryMode === 'public') return modeBoundaries.publicOuter;
+    if (boundaryMode === 'private') return modeBoundaries.privateOuter;
+    return [] as { latitude: number; longitude: number }[];
+  }, [boundaryMode, modeBoundaries.privateOuter, modeBoundaries.publicOuter]);
 
   const normalizeTransportType = (t?: string) => (t ?? '').trim().toLowerCase();
 
@@ -792,6 +829,20 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
               </LeafletMarker>
             ))}
 
+            {activeBoundaryCoords.length >= 4 && (
+              <LeafletPolygon
+                key={`coverage-${boundaryMode}`}
+                positions={activeBoundaryCoords.map((coord) => [coord.latitude, coord.longitude] as [number, number])}
+                pathOptions={{
+                  color: colors.accent,
+                  weight: 4,
+                  fillColor: colors.background,
+                  fillOpacity: 0,
+                  opacity: 0.98
+                }}
+              />
+            )}
+
             {/* Render route segments with different colors */}
             {route && (() => {
               const { segPaths, connectors } = computeRenderPaths(route.segments);
@@ -998,11 +1049,23 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   const webViewRef = useRef<WebView>(null);
 
   type LeafletPolyline = { coords: [number, number][]; color: string; weight: number; dashArray?: string };
+  type LeafletPolygon = { coords: [number, number][]; color: string; fillColor: string; fillOpacity: number; weight: number; dashArray?: string };
   type LeafletMarker = { lat: number; lon: number; kind: 'origin' | 'destination' | 'stopover' | 'transfer'; label?: string; color?: string };
 
   const nativeLeafletPayload = useMemo(() => {
     const markers: LeafletMarker[] = [];
     const polylinesOut: LeafletPolyline[] = [];
+    const polygonsOut: LeafletPolygon[] = [];
+
+    if (activeBoundaryCoords.length >= 4) {
+      polygonsOut.push({
+        coords: activeBoundaryCoords.map((c) => [c.latitude, c.longitude]),
+        color: colors.accent,
+        fillColor: colors.background,
+        fillOpacity: 0,
+        weight: 4
+      });
+    }
 
     if (origin) {
       markers.push({ lat: origin.coordinates.latitude, lon: origin.coordinates.longitude, kind: 'origin', color: '#27ae60' });
@@ -1174,6 +1237,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     return {
       center: { lat: centerLat, lon: centerLon, zoom: 13 },
       markers,
+      polygons: polygonsOut,
       polylines: polylinesOut,
       fit_points: effectiveFitPoints
     };
@@ -1189,9 +1253,13 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     polylineWidth,
     showRoute,
     showTransferMarkers,
+    activeBoundaryCoords,
     previewCoords,
     customPolylineConnectors,
-    effectiveFitPoints
+    effectiveFitPoints,
+    colors.accent,
+    colors.background,
+    colors.textSecondary
   ]);
 
   const nativeLeafletHtml = useMemo(() => {
@@ -1282,9 +1350,24 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         L.polyline(p.coords, opts).addTo(layer);
       }
 
+      function addPolygon(p) {
+        if (!Array.isArray(p.coords) || p.coords.length < 4) return;
+        const opts = {
+          color: p.color || '#8e9aa7',
+          weight: typeof p.weight === 'number' ? p.weight : 2,
+          fillColor: p.fillColor || '#ffffff',
+          fillOpacity: typeof p.fillOpacity === 'number' ? p.fillOpacity : 0.05
+        };
+        if (p.dashArray) {
+          opts.dashArray = p.dashArray;
+        }
+        L.polygon(p.coords, opts).addTo(layer);
+      }
+
       function setData(data) {
         clearLayer();
         (data.markers || []).forEach(addMarker);
+        (data.polygons || []).forEach(addPolygon);
         (data.polylines || []).forEach(addPolyline);
 
         // Fit map to visible geometry/markers.

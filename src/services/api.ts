@@ -34,6 +34,66 @@ export const pingBackend = async (): Promise<boolean> => {
   }
 };
 
+export type CoverageBoundary = {
+  key: string;
+  label: string;
+  bbox: { north: number; south: number; east: number; west: number };
+  polygon: { latitude: number; longitude: number }[];
+};
+
+export type ModeCoverageBoundaries = {
+  publicOuter: { latitude: number; longitude: number }[];
+  privateOuter: { latitude: number; longitude: number }[];
+  regions: CoverageBoundary[];
+};
+
+export const getCoverageBoundaries = async (): Promise<ModeCoverageBoundaries> => {
+  const parsePolygon = (raw: any): { latitude: number; longitude: number }[] => {
+    const parsed = Array.isArray(raw)
+      ? raw
+          .map((c: any) => {
+            const lon = Number(c?.[0]);
+            const lat = Number(c?.[1]);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+            return { latitude: lat, longitude: lon };
+          })
+          .filter(
+            (p: { latitude: number; longitude: number } | null): p is { latitude: number; longitude: number } => !!p
+          )
+      : [];
+    return parsed.length >= 4 ? parsed : [];
+  };
+
+  const res = await apiClient.get('/system/coverage-boundaries');
+  const regions = Array.isArray(res.data?.regions) ? res.data.regions : [];
+  const parsedRegions = regions
+    .map((r: any) => {
+      const polygon = parsePolygon(r?.polygon);
+      if (polygon.length < 4) return null;
+      return {
+        key: String(r?.key || ''),
+        label: String(r?.label || ''),
+        bbox: {
+          north: Number(r?.bbox?.north),
+          south: Number(r?.bbox?.south),
+          east: Number(r?.bbox?.east),
+          west: Number(r?.bbox?.west)
+        },
+        polygon
+      } as CoverageBoundary;
+    })
+    .filter((r: CoverageBoundary | null): r is CoverageBoundary => !!r);
+
+  const publicOuter = parsePolygon(res.data?.mode_boundaries?.public);
+  const privateOuter = parsePolygon(res.data?.mode_boundaries?.private);
+
+  return {
+    publicOuter,
+    privateOuter,
+    regions: parsedRegions
+  };
+};
+
 /**
  * Get an OSM-following preview polyline between two points
  * Returns Coordinates[] converted from GeoJSON [lon,lat]

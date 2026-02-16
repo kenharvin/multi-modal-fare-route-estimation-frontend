@@ -195,6 +195,7 @@ const RouteResultsScreen: React.FC = () => {
           <MapViewComponent 
             origin={origin}
             destination={destination}
+            boundaryMode="public"
           />
         </View>
         <View style={styles.emptyContent}>
@@ -222,6 +223,7 @@ const RouteResultsScreen: React.FC = () => {
           origin={origin}
           destination={destination}
           route={selectedRoute}
+          boundaryMode="public"
           fitBoundsPadding={{ top: 64, right: 64, bottom: 520, left: 64 }}
           fitBoundsMaxZoom={11}
         />
@@ -278,17 +280,18 @@ const RouteResultsScreen: React.FC = () => {
 
         {selectedRoute && (
           <View style={styles.footer}>
+            <Text style={styles.summaryTitle}>Selected Route</Text>
             <View style={styles.summaryRow}>
-              <View style={styles.summaryItem}>
-                <Text>$</Text>
+              <View style={[styles.summaryItem, styles.summaryItemDivider]}>
+                <Text style={styles.summaryLabel}>Fare</Text>
                 <Text style={styles.summaryValue}>₱{selectedRoute.totalFare.toFixed(2)}</Text>
               </View>
-              <View style={styles.summaryItem}>
-                <Text>T</Text>
+              <View style={[styles.summaryItem, styles.summaryItemDivider]}>
+                <Text style={styles.summaryLabel}>Time</Text>
                 <Text style={styles.summaryValue}>{formatTimeRange(selectedRoute.totalTime)}</Text>
               </View>
               <View style={styles.summaryItem}>
-                <Text>↔</Text>
+                <Text style={styles.summaryLabel}>Transfers</Text>
                 <Text style={styles.summaryValue}>
                   {selectedRoute.totalTransfers === 0
                     ? 'No transfers'
@@ -416,19 +419,46 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.gray6
   },
+  summaryTitle: {
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4
+  },
   summaryRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    backgroundColor: colors.gray7,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.gray6,
+    overflow: 'hidden',
     marginBottom: 16
   },
   summaryItem: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    minHeight: 74,
+    justifyContent: 'center',
     alignItems: 'center'
   },
-  summaryValue: {
-    fontSize: fontSize.lg,
+  summaryItemDivider: {
+    borderRightWidth: 1,
+    borderRightColor: colors.gray6
+  },
+  summaryLabel: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
     fontWeight: '600',
+    marginBottom: 4
+  },
+  summaryValue: {
+    fontSize: fontSize.md,
+    fontWeight: '700',
     color: colors.textPrimary,
-    marginTop: 4
+    textAlign: 'center'
   },
   continueButton: {
     borderRadius: borderRadius.xl,
