@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
 import { Vehicle, VehicleCategory, Stopover, StopoverType, Location, DrivingPreferences } from '@/types';
@@ -21,7 +21,6 @@ type VehicleCategoryCard = {
   label: string;
   icon: string;
   efficiency: number;
-  fuelPrice: number;
 };
 
 const FALLBACK_PRIVATE_FUEL_SETTINGS: PrivateVehicleFuelSetting[] = [
@@ -53,6 +52,8 @@ const PrivateVehicleScreen: React.FC = () => {
     fuelEfficiency: 12 // default km/l
   });
   const [fuelPrice, setFuelPrice] = useState<string>('60');
+  const [useCustomFuelPrice, setUseCustomFuelPrice] = useState<boolean>(false);
+  const [customFuelPrice, setCustomFuelPrice] = useState<string>('60');
   const [vehicleFuelSettings, setVehicleFuelSettings] = useState<PrivateVehicleFuelSetting[]>(FALLBACK_PRIVATE_FUEL_SETTINGS);
   const [stopovers, setStopovers] = useState<Stopover[]>([]);
   const [showMap, setShowMap] = useState<boolean>(false);
@@ -82,25 +83,28 @@ const PrivateVehicleScreen: React.FC = () => {
 
   const MAX_STOPOVERS = 3;
 
-  useEffect(() => {
-    let cancelled = false;
+  useFocusEffect(
+    React.useCallback(() => {
+      let cancelled = false;
 
-    const loadFuelSettings = async () => {
-      const rows = await getPrivateVehicleFuelSettings();
-      if (cancelled || rows.length === 0) return;
+      const loadFuelSettings = async () => {
+        const rows = await getPrivateVehicleFuelSettings();
+        if (cancelled || rows.length === 0) return;
 
-      const allowed = new Set(Object.values(VehicleCategory));
-      const normalized = rows.filter((row) => allowed.has(row.vehicle_type as VehicleCategory));
-      if (normalized.length > 0) {
-        setVehicleFuelSettings(normalized);
-      }
-    };
+        const allowed = new Set(Object.values(VehicleCategory));
+        const normalized = rows.filter((row) => allowed.has(row.vehicle_type as VehicleCategory));
+        if (normalized.length > 0) {
+          setVehicleFuelSettings(normalized);
+        }
+      };
 
-    loadFuelSettings();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      loadFuelSettings();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   const vehicleCategories = useMemo<VehicleCategoryCard[]>(() => {
     return vehicleFuelSettings
@@ -112,29 +116,45 @@ const PrivateVehicleScreen: React.FC = () => {
           value,
           label: meta.label,
           icon: meta.icon,
-          efficiency: Number(row.fuel_efficiency || 0),
-          fuelPrice: Number(row.fuel_price || 0)
+          efficiency: Number(row.fuel_efficiency || 0)
         };
       })
       .filter((row): row is VehicleCategoryCard => !!row);
   }, [vehicleFuelSettings]);
 
+  const globalAdminFuelPrice = useMemo(() => {
+    const first = vehicleFuelSettings[0];
+    return Number(first?.fuel_price || fuelPrice || 0);
+  }, [vehicleFuelSettings, fuelPrice]);
+
+  const selectedVehicleCategory = useMemo(
+    () => vehicleCategories.find((v) => v.value === vehicle.category),
+    [vehicle.category, vehicleCategories]
+  );
+
   useEffect(() => {
-    const selectedCategory = vehicleCategories.find((v) => v.value === vehicle.category);
-    if (!selectedCategory) return;
+    if (!selectedVehicleCategory) return;
 
     setVehicle((prev) => ({
       ...prev,
-      fuelEfficiency: selectedCategory.efficiency || prev.fuelEfficiency
+      fuelEfficiency: selectedVehicleCategory.efficiency || prev.fuelEfficiency
     }));
-    setFuelPrice(String(selectedCategory.fuelPrice || 0));
-  }, [vehicle.category, vehicleCategories]);
+    setFuelPrice(String(globalAdminFuelPrice || 0));
+  }, [selectedVehicleCategory, globalAdminFuelPrice]);
 
   const handleVehicleCategoryChange = (category: VehicleCategory) => {
     setVehicle({
       ...vehicle,
       category
     });
+  };
+
+  const handleToggleCustomFuelPrice = (value: boolean) => {
+    setUseCustomFuelPrice(value);
+    if (value) {
+      const adminValue = String(globalAdminFuelPrice || fuelPrice || '0');
+      setCustomFuelPrice(adminValue);
+    }
   };
 
   const handleAddStopover = (stopover: Stopover) => {
@@ -194,7 +214,10 @@ const PrivateVehicleScreen: React.FC = () => {
       return;
     }
 
-    if (!fuelPrice || parseFloat(fuelPrice) <= 0) {
+    const adminFuelPrice = Number(globalAdminFuelPrice || parseFloat(fuelPrice));
+    const effectiveFuelPrice = useCustomFuelPrice ? Number(customFuelPrice) : adminFuelPrice;
+
+    if (!Number.isFinite(effectiveFuelPrice) || effectiveFuelPrice <= 0) {
       Alert.alert('Invalid Fuel Price', 'Please enter a valid fuel price');
       return;
     }
@@ -204,7 +227,7 @@ const PrivateVehicleScreen: React.FC = () => {
       origin: selectedOrigin,
       destination: selectedDestination,
       vehicle,
-      fuelPrice: parseFloat(fuelPrice),
+      fuelPrice: effectiveFuelPrice,
       stopovers,
       preferences
     });
@@ -346,13 +369,26 @@ const PrivateVehicleScreen: React.FC = () => {
                 style={styles.input}
               />
 
+              <View style={styles.preferenceRow}>
+                <View style={styles.preferenceInfo}>
+                  <MaterialCommunityIcons name="tune-vertical" size={18} color={colors.textSecondary} />
+                  <Text style={styles.preferenceText}>Use custom fuel price (optional)</Text>
+                </View>
+                <Switch
+                  value={useCustomFuelPrice}
+                  onValueChange={handleToggleCustomFuelPrice}
+                  color={colors.primary}
+                />
+              </View>
+
               <TextInput
-                label="Current Fuel Price (₱/L)"
-                value={fuelPrice}
-                onChangeText={setFuelPrice}
+                label={useCustomFuelPrice ? 'Fuel Price (₱/L) custom' : 'Fuel Price (₱/L) from Admin'}
+                value={useCustomFuelPrice ? customFuelPrice : String(globalAdminFuelPrice || fuelPrice)}
+                onChangeText={setCustomFuelPrice}
                 keyboardType="numeric"
                 mode="outlined"
                 style={styles.input}
+                editable={useCustomFuelPrice}
               />
             </View>
 
@@ -475,13 +511,26 @@ const PrivateVehicleScreen: React.FC = () => {
           style={styles.input}
         />
 
+        <View style={styles.preferenceRow}>
+          <View style={styles.preferenceInfo}>
+            <MaterialCommunityIcons name="tune-vertical" size={18} color={colors.textSecondary} />
+            <Text style={styles.preferenceText}>Use custom fuel price (optional)</Text>
+          </View>
+          <Switch
+            value={useCustomFuelPrice}
+            onValueChange={handleToggleCustomFuelPrice}
+            color={colors.primary}
+          />
+        </View>
+
         <TextInput
-          label="Current Fuel Price (₱/L)"
-          value={fuelPrice}
-          onChangeText={setFuelPrice}
+          label={useCustomFuelPrice ? 'Fuel Price (₱/L) custom' : 'Fuel Price (₱/L) from Admin'}
+          value={useCustomFuelPrice ? customFuelPrice : String(globalAdminFuelPrice || fuelPrice)}
+          onChangeText={setCustomFuelPrice}
           keyboardType="numeric"
           mode="outlined"
           style={styles.input}
+          editable={useCustomFuelPrice}
         />
       </View>
 
