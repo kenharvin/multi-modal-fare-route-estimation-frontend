@@ -426,26 +426,30 @@ const PrivateVehicleScreen: React.FC = () => {
               </View>
 
               <Text style={styles.sectionSubtitle}>Fuel Type</Text>
-              <View style={styles.vehiclesContainer}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.fuelTypeRow}
+                style={styles.fuelTypeScroll}
+              >
                 {fuelPriceOptions.map((option) => {
                   const active = selectedFuelType === option.fuel_type;
                   return (
                     <TouchableOpacity
                       key={option.fuel_type}
-                      style={[styles.vehicleCard, active && styles.vehicleCardActive]}
+                      style={[styles.fuelTypeButton, active && styles.fuelTypeButtonActive]}
                       onPress={() => handleFuelTypeChange(option.fuel_type)}
                     >
-                      <Text style={[styles.vehicleLabel, active && styles.vehicleLabelActive]}>
+                      <Text style={[styles.fuelTypeText, active && styles.fuelTypeTextActive]}>
                         {FUEL_TYPE_LABELS[option.fuel_type] || option.fuel_type}
                       </Text>
-                      <Text style={styles.efficiencyText}>{option.price} ₱/L</Text>
                     </TouchableOpacity>
                   );
                 })}
-              </View>
+              </ScrollView>
 
               <TextInput
-                label={useCustomFuelPrice ? 'Fuel Price (₱/L) custom' : 'Fuel Price (₱/L) from Admin'}
+                label={useCustomFuelPrice ? 'Fuel Price (₱/L) custom' : 'Fuel Price (₱/L)'}
                 value={useCustomFuelPrice ? customFuelPrice : String(selectedAdminFuelPrice || fuelPrice)}
                 onChangeText={setCustomFuelPrice}
                 keyboardType="numeric"
@@ -453,6 +457,7 @@ const PrivateVehicleScreen: React.FC = () => {
                 style={styles.input}
                 editable={useCustomFuelPrice}
               />
+              <Text style={styles.fuelPriceNote}>Note: Fuel price indicated is average city rate.</Text>
             </View>
 
             <View style={styles.sheetDivider} />
@@ -587,26 +592,30 @@ const PrivateVehicleScreen: React.FC = () => {
         </View>
 
         <Text style={styles.sectionSubtitle}>Fuel Type</Text>
-        <View style={styles.vehiclesContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.fuelTypeRow}
+          style={styles.fuelTypeScroll}
+        >
           {fuelPriceOptions.map((option) => {
             const active = selectedFuelType === option.fuel_type;
             return (
               <TouchableOpacity
                 key={option.fuel_type}
-                style={[styles.vehicleCard, active && styles.vehicleCardActive]}
+                style={[styles.fuelTypeButton, active && styles.fuelTypeButtonActive]}
                 onPress={() => handleFuelTypeChange(option.fuel_type)}
               >
-                <Text style={[styles.vehicleLabel, active && styles.vehicleLabelActive]}>
+                <Text style={[styles.fuelTypeText, active && styles.fuelTypeTextActive]}>
                   {FUEL_TYPE_LABELS[option.fuel_type] || option.fuel_type}
                 </Text>
-                <Text style={styles.efficiencyText}>{option.price} ₱/L</Text>
               </TouchableOpacity>
             );
           })}
-        </View>
+        </ScrollView>
 
         <TextInput
-          label={useCustomFuelPrice ? 'Fuel Price (₱/L) custom' : 'Fuel Price (₱/L) from Admin'}
+          label={useCustomFuelPrice ? 'Fuel Price (₱/L) custom' : 'Fuel Price (₱/L)'}
           value={useCustomFuelPrice ? customFuelPrice : String(selectedAdminFuelPrice || fuelPrice)}
           onChangeText={setCustomFuelPrice}
           keyboardType="numeric"
@@ -614,6 +623,7 @@ const PrivateVehicleScreen: React.FC = () => {
           style={styles.input}
           editable={useCustomFuelPrice}
         />
+        <Text style={styles.fuelPriceNote}>Note: Fuel price indicated is average city rate.</Text>
       </View>
 
       <View style={styles.section}>
@@ -814,6 +824,39 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexWrap: 'wrap',
     marginBottom: spacing.md
   },
+  fuelTypeScroll: {
+    marginBottom: spacing.md,
+  },
+  fuelTypeRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  fuelTypeButton: {
+    minWidth: 150,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.gray7,
+    borderRadius: borderRadius.xl,
+    borderWidth: 2,
+    borderColor: colors.gray5,
+  },
+  fuelTypeButtonActive: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
+  },
+  fuelTypeText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  fuelTypeTextActive: {
+    color: colors.textPrimary,
+    fontWeight: '700',
+  },
   vehicleCard: {
     width: '30%',
     alignItems: 'center',
@@ -846,6 +889,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   input: {
     marginBottom: spacing.md
+  },
+  fuelPriceNote: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
+    textAlign: 'left',
   },
   preferenceRow: {
     flexDirection: 'row',
