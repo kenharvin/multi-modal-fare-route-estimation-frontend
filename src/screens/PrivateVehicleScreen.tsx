@@ -11,10 +11,34 @@ import StopoverInput from '@components/StopoverInput';
 import MapViewComponent from '@components/MapViewComponent';
 import { Button, TextInput, Switch } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { searchPois } from '@services/api';
+import { getPrivateVehicleFuelSettings, type PrivateVehicleFuelSetting, searchPois } from '@services/api';
 import { borderRadius, fontSize, shadows, spacing, type ThemeColors } from '@/utils/theme';
 import { useThemeMode } from '@context/ThemeContext';
 type PrivateVehicleNavigationProp = StackNavigationProp<RootStackParamList, 'PrivateVehicle'>;
+
+type VehicleCategoryCard = {
+  value: VehicleCategory;
+  label: string;
+  icon: string;
+  efficiency: number;
+  fuelPrice: number;
+};
+
+const FALLBACK_PRIVATE_FUEL_SETTINGS: PrivateVehicleFuelSetting[] = [
+  { vehicle_type: VehicleCategory.SEDAN, fuel_efficiency: 16, fuel_price: 60 },
+  { vehicle_type: VehicleCategory.SUV, fuel_efficiency: 12, fuel_price: 60 },
+  { vehicle_type: VehicleCategory.HATCHBACK, fuel_efficiency: 18, fuel_price: 60 },
+  { vehicle_type: VehicleCategory.MOTORCYCLE, fuel_efficiency: 50, fuel_price: 60 },
+  { vehicle_type: VehicleCategory.VAN, fuel_efficiency: 9.5, fuel_price: 60 }
+];
+
+const VEHICLE_CATEGORY_META: Record<VehicleCategory, { label: string; icon: string }> = {
+  [VehicleCategory.SEDAN]: { label: 'Sedan', icon: 'car-side' },
+  [VehicleCategory.SUV]: { label: 'SUV', icon: 'car-estate' },
+  [VehicleCategory.HATCHBACK]: { label: 'Hatchback', icon: 'car-hatchback' },
+  [VehicleCategory.MOTORCYCLE]: { label: 'Motorcycle', icon: 'motorbike' },
+  [VehicleCategory.VAN]: { label: 'Van', icon: 'van-utility' }
+};
 
 const PrivateVehicleScreen: React.FC = () => {
   const { colors } = useThemeMode();
@@ -29,6 +53,7 @@ const PrivateVehicleScreen: React.FC = () => {
     fuelEfficiency: 12 // default km/l
   });
   const [fuelPrice, setFuelPrice] = useState<string>('60');
+  const [vehicleFuelSettings, setVehicleFuelSettings] = useState<PrivateVehicleFuelSetting[]>(FALLBACK_PRIVATE_FUEL_SETTINGS);
   const [stopovers, setStopovers] = useState<Stopover[]>([]);
   const [showMap, setShowMap] = useState<boolean>(false);
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
@@ -57,20 +82,58 @@ const PrivateVehicleScreen: React.FC = () => {
 
   const MAX_STOPOVERS = 3;
 
-  const vehicleCategories = [
-    { value: VehicleCategory.SEDAN, label: 'Sedan', icon: 'car-side', efficiency: 12 },
-    { value: VehicleCategory.SUV, label: 'SUV', icon: 'car-estate', efficiency: 10 },
-    { value: VehicleCategory.HATCHBACK, label: 'Hatchback', icon: 'car-hatchback', efficiency: 14 },
-    { value: VehicleCategory.MOTORCYCLE, label: 'Motorcycle', icon: 'motorbike', efficiency: 35 },
-    { value: VehicleCategory.VAN, label: 'Van', icon: 'van-utility', efficiency: 9 }
-  ];
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadFuelSettings = async () => {
+      const rows = await getPrivateVehicleFuelSettings();
+      if (cancelled || rows.length === 0) return;
+
+      const allowed = new Set(Object.values(VehicleCategory));
+      const normalized = rows.filter((row) => allowed.has(row.vehicle_type as VehicleCategory));
+      if (normalized.length > 0) {
+        setVehicleFuelSettings(normalized);
+      }
+    };
+
+    loadFuelSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const vehicleCategories = useMemo<VehicleCategoryCard[]>(() => {
+    return vehicleFuelSettings
+      .map((row) => {
+        const value = row.vehicle_type as VehicleCategory;
+        const meta = VEHICLE_CATEGORY_META[value];
+        if (!meta) return null;
+        return {
+          value,
+          label: meta.label,
+          icon: meta.icon,
+          efficiency: Number(row.fuel_efficiency || 0),
+          fuelPrice: Number(row.fuel_price || 0)
+        };
+      })
+      .filter((row): row is VehicleCategoryCard => !!row);
+  }, [vehicleFuelSettings]);
+
+  useEffect(() => {
+    const selectedCategory = vehicleCategories.find((v) => v.value === vehicle.category);
+    if (!selectedCategory) return;
+
+    setVehicle((prev) => ({
+      ...prev,
+      fuelEfficiency: selectedCategory.efficiency || prev.fuelEfficiency
+    }));
+    setFuelPrice(String(selectedCategory.fuelPrice || 0));
+  }, [vehicle.category, vehicleCategories]);
 
   const handleVehicleCategoryChange = (category: VehicleCategory) => {
-    const selectedCategory = vehicleCategories.find(v => v.value === category);
     setVehicle({
       ...vehicle,
-      category,
-      fuelEfficiency: selectedCategory?.efficiency || 12
+      category
     });
   };
 

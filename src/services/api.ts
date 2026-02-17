@@ -11,6 +11,12 @@ import {
   TransportType
 } from '@/types';
 
+export type PrivateVehicleFuelSetting = {
+  vehicle_type: string;
+  fuel_efficiency: number;
+  fuel_price: number;
+};
+
 // -----------------------------------------------------------------------------
 // Config
 // -----------------------------------------------------------------------------
@@ -771,6 +777,30 @@ export const searchPois = async (
     return mapped;
   } catch (error) {
     console.error('Error searching POIs:', error);
+    return [];
+  }
+};
+
+export const getPrivateVehicleFuelSettings = async (): Promise<
+  PrivateVehicleFuelSetting[]
+> => {
+  try {
+    const response = await apiClient.get('/private-vehicle/fuel-settings');
+    const rows = Array.isArray(response.data) ? response.data : [];
+    return rows
+      .map((row: any) => ({
+        vehicle_type: String(row?.vehicle_type || '').trim().toLowerCase(),
+        fuel_efficiency: Number(row?.fuel_efficiency || 0),
+        fuel_price: Number(row?.fuel_price || 0)
+      }))
+      .filter(
+        (row: PrivateVehicleFuelSetting) =>
+          row.vehicle_type.length > 0 &&
+          Number.isFinite(row.fuel_efficiency) &&
+          Number.isFinite(row.fuel_price)
+      );
+  } catch (error) {
+    console.error('Error loading private vehicle fuel settings:', error);
     return [];
   }
 };
