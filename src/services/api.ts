@@ -17,6 +17,12 @@ export type PrivateVehicleFuelSetting = {
   fuel_price: number;
 };
 
+export type PrivateFuelPriceOption = {
+  fuel_type: string;
+  price: number;
+  is_default: boolean;
+};
+
 // -----------------------------------------------------------------------------
 // Config
 // -----------------------------------------------------------------------------
@@ -801,6 +807,28 @@ export const getPrivateVehicleFuelSettings = async (): Promise<
       );
   } catch (error) {
     console.error('Error loading private vehicle fuel settings:', error);
+    return [];
+  }
+};
+
+export const getPrivateFuelPriceOptions = async (): Promise<
+  PrivateFuelPriceOption[]
+> => {
+  try {
+    const response = await apiClient.get('/private-vehicle/fuel-price-options');
+    const rows = Array.isArray(response.data) ? response.data : [];
+    return rows
+      .map((row: any) => ({
+        fuel_type: String(row?.fuel_type || '').trim().toLowerCase(),
+        price: Number(row?.price || 0),
+        is_default: Boolean(row?.is_default),
+      }))
+      .filter(
+        (row: PrivateFuelPriceOption) =>
+          row.fuel_type.length > 0 && Number.isFinite(row.price),
+      );
+  } catch (error) {
+    console.error('Error loading private fuel price options:', error);
     return [];
   }
 };
