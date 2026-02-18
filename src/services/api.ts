@@ -787,6 +787,23 @@ export const searchPois = async (
   }
 };
 
+export const reverseGeocodePoi = async (
+  latitude: number,
+  longitude: number,
+): Promise<{ name: string; address?: string }> => {
+  const fallbackName = `Location at ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+  try {
+    const response = await apiClient.get(
+      `/private-vehicle/poi/reverse?lat=${encodeURIComponent(String(latitude))}&lon=${encodeURIComponent(String(longitude))}`
+    );
+    const name = String(response?.data?.name || '').trim() || fallbackName;
+    const address = String(response?.data?.address || '').trim();
+    return { name, address: address || 'Selected from map' };
+  } catch {
+    return { name: fallbackName, address: 'Selected from map' };
+  }
+};
+
 export const getPrivateVehicleFuelSettings = async (): Promise<
   PrivateVehicleFuelSetting[]
 > => {

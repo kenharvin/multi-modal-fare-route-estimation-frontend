@@ -412,6 +412,9 @@ const PrivateVehicleScreen: React.FC = () => {
                 mode="outlined"
                 style={styles.input}
               />
+              <Text style={styles.fuelEfficiencyNote}>
+                Note: Fuel efficiency shown is an average value based on online data. You can enter your vehicle's actual fuel efficiency if you know it.
+              </Text>
 
               <View style={styles.preferenceRow}>
                 <View style={styles.preferenceInfo}>
@@ -578,6 +581,9 @@ const PrivateVehicleScreen: React.FC = () => {
           mode="outlined"
           style={styles.input}
         />
+        <Text style={styles.fuelEfficiencyNote}>
+          Note: Fuel efficiency shown is an average value based on online data. You can enter your vehicle's actual fuel efficiency if you know it.
+        </Text>
 
         <View style={styles.preferenceRow}>
           <View style={styles.preferenceInfo}>
@@ -889,6 +895,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   input: {
     marginBottom: spacing.md
+  },
+  fuelEfficiencyNote: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
+    textAlign: 'left',
   },
   fuelPriceNote: {
     fontSize: fontSize.sm,

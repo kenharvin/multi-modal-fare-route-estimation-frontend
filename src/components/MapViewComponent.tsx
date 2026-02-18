@@ -6,6 +6,7 @@ import { type ThemeColors } from '@/utils/theme';
 import { useThemeMode } from '@context/ThemeContext';
 import MapLegend from './MapLegend';
 import { getPreviewPolyline, getCoverageBoundaries, type ModeCoverageBoundaries } from '@/services/api';
+import { reverseGeocodePoi } from '@/services/api';
 import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 
@@ -117,6 +118,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   const [selectingDestination, setSelectingDestination] = useState<boolean>(false);
   const [selectingStopover, setSelectingStopover] = useState<boolean>(false);
   const [previewCoords, setPreviewCoords] = useState<{ latitude: number; longitude: number }[] | null>(null);
+  const [isResolvingLocation, setIsResolvingLocation] = useState<boolean>(false);
   const [modeBoundaries, setModeBoundaries] = useState<Pick<ModeCoverageBoundaries, 'publicOuter' | 'privateOuter'>>({
     publicOuter: [],
     privateOuter: []
@@ -1416,44 +1418,58 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     nativeLeafletPayload
   ]);
 
-  const handleLeafletMessage = (event: any) => {
+  const handleLeafletMessage = async (event: any) => {
     try {
       const msg = JSON.parse(event?.nativeEvent?.data || '{}');
       if (msg?.type !== 'mapClick') return;
       const coordinate = { latitude: Number(msg.lat), longitude: Number(msg.lon) };
       if (!isFinite(coordinate.latitude) || !isFinite(coordinate.longitude)) return;
 
-      if (selectingOrigin && onOriginSelect) {
-        const location: Location = {
-          name: `Location at ${coordinate.latitude.toFixed(4)}, ${coordinate.longitude.toFixed(4)}`,
+      const buildLocation = async (): Promise<Location> => {
+        const fallbackName = `Location at ${coordinate.latitude.toFixed(4)}, ${coordinate.longitude.toFixed(4)}`;
+        const resolved = await reverseGeocodePoi(coordinate.latitude, coordinate.longitude);
+        return {
+          name: resolved?.name || fallbackName,
           coordinates: coordinate,
-          address: 'Selected from map'
+          address: resolved?.address || 'Selected from map'
         };
-        onOriginSelect(location);
+      };
+
+      if (selectingOrigin && onOriginSelect) {
         setSelectingOrigin(false);
+        setIsResolvingLocation(true);
+        try {
+          const location = await buildLocation();
+          onOriginSelect(location);
+        } finally {
+          setIsResolvingLocation(false);
+        }
         return;
       }
       if (selectingDestination && onDestinationSelect) {
-        const location: Location = {
-          name: `Location at ${coordinate.latitude.toFixed(4)}, ${coordinate.longitude.toFixed(4)}`,
-          coordinates: coordinate,
-          address: 'Selected from map'
-        };
-        onDestinationSelect(location);
         setSelectingDestination(false);
+        setIsResolvingLocation(true);
+        try {
+          const location = await buildLocation();
+          onDestinationSelect(location);
+        } finally {
+          setIsResolvingLocation(false);
+        }
         return;
       }
       if (selectingStopover && onStopoverSelect) {
-        const location: Location = {
-          name: `Location at ${coordinate.latitude.toFixed(4)}, ${coordinate.longitude.toFixed(4)}`,
-          coordinates: coordinate,
-          address: 'Selected from map'
-        };
-        onStopoverSelect(location);
         setSelectingStopover(false);
+        setIsResolvingLocation(true);
+        try {
+          const location = await buildLocation();
+          onStopoverSelect(location);
+        } finally {
+          setIsResolvingLocation(false);
+        }
       }
     } catch {
       // ignore
+      setIsResolvingLocation(false);
     }
   };
 
@@ -1568,6 +1584,12 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
           <Text style={styles.instructionText}>
             Tap on the map to select {selectingOrigin ? 'origin' : selectingDestination ? 'destination' : 'stopover'}
           </Text>
+        </View>
+      )}
+
+      {isResolvingLocation && (
+        <View style={styles.resolvingBanner}>
+          <Text style={styles.resolvingText}>Resolving location...</Text>
         </View>
       )}
 
@@ -1714,6 +1736,37 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center'
+  },
+  resolvingBanner: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    right: 16,
+    alignSelf: 'center',
+    backgroundColor: colors.white,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 4,
+      },
+      web: {
+        boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+      },
+    }),
+  },
+  resolvingText: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   webMapContainer: {
     flex: 1,

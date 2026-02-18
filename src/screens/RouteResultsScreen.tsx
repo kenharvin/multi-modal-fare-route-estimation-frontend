@@ -32,10 +32,10 @@ const RouteResultsScreen: React.FC = () => {
   const isMountedRef = useRef<boolean>(true);
   const [isGeometryLoading, setIsGeometryLoading] = useState<boolean>(false);
   const geometryCacheRef = useRef<Map<string, Route>>(new Map());
-  const [sheetExpanded, setSheetExpanded] = useState<boolean>(true);
+  const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
 
-  const sheetProgress = useRef(new Animated.Value(1)).current; // 0=collapsed, 1=expanded
-  const isExpandedRef = useRef<boolean>(true);
+  const sheetProgress = useRef(new Animated.Value(0)).current; // 0=collapsed, 1=expanded
+  const isExpandedRef = useRef<boolean>(false);
   const winH = Dimensions.get('window').height;
   const sheetCollapsedH = 220;
   const sheetExpandedH = Math.max(560, Math.round(winH * 0.92));

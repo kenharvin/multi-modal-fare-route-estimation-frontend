@@ -26,10 +26,10 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const { isLoading, setIsLoading, setError } = useApp();
   
   const [routeResult, setRouteResult] = useState<PrivateVehicleRoute | null>(null);
-  const [sheetExpanded, setSheetExpanded] = useState<boolean>(true);
+  const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
 
-  const sheetProgress = useRef(new Animated.Value(1)).current; // 0=collapsed, 1=expanded
-  const isExpandedRef = useRef<boolean>(true);
+  const sheetProgress = useRef(new Animated.Value(0)).current; // 0=collapsed, 1=expanded
+  const isExpandedRef = useRef<boolean>(false);
   const winH = Dimensions.get('window').height;
   const sheetCollapsedH = 220;
   const sheetExpandedH = Math.max(560, Math.round(winH * 0.92));
@@ -365,6 +365,9 @@ const PrivateVehicleResultsScreen: React.FC = () => {
             <Text style={styles.detailLabel}>Fuel Efficiency:</Text>
             <Text style={styles.detailValue}>{vehicle.fuelEfficiency} km/L</Text>
           </View>
+          <Text style={styles.detailNote}>
+            Fuel efficiency shown is an average value based on online data.
+          </Text>
 
           <View style={styles.detailRow}>
             <MaterialCommunityIcons name="cash" size={18} color={colors.textSecondary} />
@@ -593,6 +596,14 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: '600',
     color: colors.textPrimary
+  },
+  detailNote: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.md,
+    marginLeft: 36,
+    fontStyle: 'italic'
   },
   legCard: {
     backgroundColor: colors.white,
