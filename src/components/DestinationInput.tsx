@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList } from 'react-native';
 import { Location } from '@/types';
 import { searchStops } from '@services/api';
@@ -25,6 +25,11 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
   const [searchText, setSearchText] = useState<string>(value?.name || '');
   const [suggestions, setSuggestions] = useState<Location[]>([]);
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
+
+  useEffect(() => {
+    const next = value?.name || '';
+    setSearchText((prev) => (prev === next ? prev : next));
+  }, [value?.name]);
 
   // Search stops using backend API
   const searchLocations = async (text: string) => {
