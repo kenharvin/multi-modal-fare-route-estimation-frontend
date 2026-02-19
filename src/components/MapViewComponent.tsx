@@ -81,6 +81,8 @@ interface MapViewComponentProps {
   fitBoundsMaxZoom?: number;
   /** Controls which coverage border to show. */
   boundaryMode?: 'public' | 'private' | 'none';
+  /** Hides in-map selection controls (Set Origin/Set Destination/Add Stopover). */
+  hideSelectionControls?: boolean;
 }
 
 const MapViewComponent: React.FC<MapViewComponentProps> = ({
@@ -100,7 +102,8 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   showTransferMarkers = true,
   fitBoundsPadding,
   fitBoundsMaxZoom,
-  boundaryMode = 'none'
+  boundaryMode = 'none',
+  hideSelectionControls = false
 }) => {
   const { colors, isDark } = useThemeMode();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -123,7 +126,15 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     publicOuter: [],
     privateOuter: []
   });
-  const [legendVisible, setLegendVisible] = useState<boolean>(Platform.OS === 'web');
+  const [legendVisible, setLegendVisible] = useState<boolean>(
+    Platform.OS === 'web' || !!(onOriginSelect || onDestinationSelect)
+  );
+  const showPinLegend = !!(onOriginSelect || onDestinationSelect);
+  const showTransportLegend = !!(route && route.segments.length > 0);
+  const canShowLegend = showPinLegend || showTransportLegend;
+  const legendPosition: 'top-right' | 'top-center' = showPinLegend && !showTransportLegend
+    ? 'top-right'
+    : 'top-center';
 
   const fitPadding = {
     top: Math.max(0, Number(fitBoundsPadding?.top ?? 56)),
@@ -1003,7 +1014,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         </div>
 
         {/* Legend toggle + legend for web Leaflet */}
-        {route && route.segments.length > 0 && (
+        {canShowLegend && (
           <View style={styles.legendToggleWrap}>
             <TouchableOpacity
               style={styles.legendToggleButton}
@@ -1016,7 +1027,14 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
           </View>
         )}
 
-        {legendVisible && route && route.segments.length > 0 && <MapLegend />}
+        {legendVisible && (
+          <MapLegend
+            showPinLegend={showPinLegend}
+            showTransportTypes={showTransportLegend}
+            showTransferLegend={showTransportLegend}
+            position={legendPosition}
+          />
+        )}
       </View>
     );
   }
@@ -1490,7 +1508,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       />
 
       {/* Legend toggle (hidden by default; tap to show) */}
-      {route && route.segments.length > 0 && (
+      {canShowLegend && (
         <View style={styles.legendToggleWrap}>
           <TouchableOpacity
             style={styles.legendToggleButton}
@@ -1503,7 +1521,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         </View>
       )}
 
-      {(onOriginSelect || onDestinationSelect || onStopoverSelect) && (
+      {!hideSelectionControls && (onOriginSelect || onDestinationSelect || onStopoverSelect) && (
         <View style={styles.controls}>
           {onOriginSelect && (
             <TouchableOpacity
@@ -1594,8 +1612,13 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       )}
 
       {/* Show legend only when toggled */}
-      {legendVisible && route && route.segments.length > 0 && (
-        <MapLegend />
+      {legendVisible && (
+        <MapLegend
+          showPinLegend={showPinLegend}
+          showTransportTypes={showTransportLegend}
+          showTransferLegend={showTransportLegend}
+          position={legendPosition}
+        />
       )}
     </View>
   );

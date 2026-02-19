@@ -4,12 +4,15 @@ import { Location } from '@/types';
 import { searchStops } from '@services/api';
 import { borderRadius, fontSize, shadows, spacing, type ThemeColors } from '@/utils/theme';
 import { useThemeMode } from '@context/ThemeContext';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 interface DestinationInputProps {
   label: string;
   value: Location | null;
-  onValueChange: (location: Location) => void;
+  onValueChange: (location: Location | null) => void;
   placeholder?: string;
   searchProvider?: (query: string) => Promise<Location[]>;
+  onPinPress?: () => void;
+  pinColor?: string;
 }
 
 const DestinationInput: React.FC<DestinationInputProps> = ({
@@ -17,7 +20,9 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
   value,
   onValueChange,
   placeholder = 'Enter location',
-  searchProvider
+  searchProvider,
+  onPinPress,
+  pinColor
 }) => {
   const { colors } = useThemeMode();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -51,6 +56,12 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
 
   const handleTextChange = (text: string) => {
     setSearchText(text);
+    if (text.trim().length === 0) {
+      onValueChange(null);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
     searchLocations(text);
   };
 
@@ -63,6 +74,7 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
 
   const handleClear = () => {
     setSearchText('');
+    onValueChange(null);
     setSuggestions([]);
     setShowSuggestions(false);
   };
@@ -71,7 +83,12 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
     <View style={styles.container}>
       <Text style={styles.label}>{label}</Text>
       <View style={styles.inputContainer}>
-        <Text>*</Text>
+        <MaterialCommunityIcons
+          name="map-marker"
+          size={18}
+          color={pinColor || colors.textSecondary}
+          style={styles.leadingPin}
+        />
         <TextInput
           style={styles.input}
           value={searchText}
@@ -80,6 +97,15 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
           placeholderTextColor={colors.textLight}
           onFocus={() => searchText.length >= 3 && setShowSuggestions(true)}
         />
+        {typeof onPinPress === 'function' && (
+          <TouchableOpacity onPress={onPinPress} style={styles.pinButton}>
+            <MaterialCommunityIcons
+              name="crosshairs-gps"
+              size={20}
+              color={pinColor || colors.primary}
+            />
+          </TouchableOpacity>
+        )}
         {searchText.length > 0 && (
           <TouchableOpacity onPress={handleClear} style={styles.clearButton}>
             <Text>X</Text>
@@ -136,6 +162,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingVertical: spacing.xs,
     ...shadows.small
   },
+  leadingPin: {
+    marginRight: spacing.sm
+  },
   icon: {
     marginRight: 8
   },
@@ -147,6 +176,18 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   clearButton: {
     padding: spacing.xs
+  },
+  pinButton: {
+    width: 34,
+    height: 34,
+    borderRadius: borderRadius.round,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    marginLeft: spacing.xs,
+    marginRight: spacing.xs
   },
   suggestionsContainer: {
     backgroundColor: colors.white,

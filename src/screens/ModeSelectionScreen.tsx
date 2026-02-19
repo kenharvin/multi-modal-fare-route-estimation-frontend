@@ -5,6 +5,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
 import { TravelMode } from '@/types';
 import { useApp } from '@context/AppContext';
+import { useLocation } from '@context/LocationContext';
 import { borderRadius, fontSize, shadows, spacing, type ThemeColors } from '@/utils/theme';
 import { useThemeMode } from '@context/ThemeContext';
 type ModeSelectionNavigationProp = StackNavigationProp<RootStackParamList, 'ModeSelection'>;
@@ -13,9 +14,13 @@ const ModeSelectionScreen: React.FC = () => {
   const { colors } = useThemeMode();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation<ModeSelectionNavigationProp>();
-  const { setTravelMode } = useApp();
+  const { travelMode, setTravelMode } = useApp();
+  const { clearSelectedLocations } = useLocation();
 
   const handleModeSelection = (mode: TravelMode) => {
+    if (travelMode && travelMode !== mode) {
+      clearSelectedLocations();
+    }
     setTravelMode(mode);
     if (mode === TravelMode.PUBLIC_TRANSPORT) {
       navigation.navigate('PublicTransport');

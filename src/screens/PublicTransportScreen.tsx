@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { Alert, Animated, Dimensions, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, PanResponder } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
-import { PublicTransportPreference } from '@/types';
+import { Location, PublicTransportPreference } from '@/types';
 import { useLocation } from '@context/LocationContext';
 import { useApp } from '@context/AppContext';
 import DestinationInput from '@components/DestinationInput';
@@ -21,14 +21,23 @@ const PublicTransportScreen: React.FC = () => {
   const navigation = useNavigation<PublicTransportNavigationProp>();
   const { selectedOrigin, selectedDestination, setSelectedOrigin, setSelectedDestination } = useLocation();
   const { setIsLoading } = useApp();
-  const [preference, setPreference] = useState<PublicTransportPreference>(PublicTransportPreference.BALANCED);
+  const [preference, setPreference] = useState<PublicTransportPreference>(PublicTransportPreference.SHORTEST_TIME);
   const [showMap, setShowMap] = useState<boolean>(false);
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
+  const [locationPickMode, setLocationPickMode] = useState<'origin' | 'destination' | null>(null);
   // Leave empty by default; only constrain when user enters a value.
   const [budget, setBudget] = useState<string>('');
   // Leave empty by default so long-distance trips aren't accidentally filtered out.
   const [maxTransfers, setMaxTransfers] = useState<string>('');
   const [preferredModes, setPreferredModes] = useState<string[]>(['walk','jeepney','bus','lrt','mrt','pnr']);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      setPreference(PublicTransportPreference.SHORTEST_TIME);
+      setBudget('');
+      setMaxTransfers('');
+    }, [])
+  );
 
   const windowHeight = Dimensions.get('window').height;
   const sheetExpandedHeight = Math.round(windowHeight * 0.88);
@@ -44,11 +53,88 @@ const PublicTransportScreen: React.FC = () => {
     }).start();
   }, [sheetExpanded, sheetHiddenOffset, sheetTranslateY]);
 
+  const expandSheet = () => setSheetExpanded(true);
+  const collapseSheet = () => setSheetExpanded(false);
+  const toggleSheet = () => setSheetExpanded((v) => !v);
+  const TOP_DRAG_ZONE_HEIGHT = 120;
+
+  const sheetHandlePanResponder = useMemo(
+    () => PanResponder.create({
+      onMoveShouldSetPanResponder: (_evt, gestureState) => {
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onMoveShouldSetPanResponderCapture: (_evt, gestureState) => {
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onPanResponderRelease: (_evt, gestureState) => {
+        if (gestureState.dy < -18) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 18) {
+          collapseSheet();
+        }
+      },
+      onPanResponderTerminate: (_evt, gestureState) => {
+        if (gestureState.dy < -18) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 18) {
+          collapseSheet();
+        }
+      }
+    }),
+    []
+  );
+
+  const topCardPanResponder = useMemo(
+    () => PanResponder.create({
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        const withinTopZone = (evt?.nativeEvent?.locationY ?? Number.MAX_SAFE_INTEGER) <= TOP_DRAG_ZONE_HEIGHT;
+        if (!withinTopZone) return false;
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
+        const withinTopZone = (evt?.nativeEvent?.locationY ?? Number.MAX_SAFE_INTEGER) <= TOP_DRAG_ZONE_HEIGHT;
+        if (!withinTopZone) return false;
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onPanResponderRelease: (_evt, gestureState) => {
+        if (gestureState.dy < -12) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 12) {
+          collapseSheet();
+        }
+      },
+      onPanResponderTerminate: (_evt, gestureState) => {
+        if (gestureState.dy < -12) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 12) {
+          collapseSheet();
+        }
+      }
+    }),
+    []
+  );
+
   const showBudgetInput = preference === PublicTransportPreference.LOWEST_FARE;
   const showMaxTransfersInput = preference === PublicTransportPreference.FEWEST_TRANSFERS;
+  const hasRequiredLocations = !!selectedOrigin && !!selectedDestination;
+  const missingLocationFields: string[] = [];
+  if (!selectedOrigin) missingLocationFields.push('Origin');
+  if (!selectedDestination) missingLocationFields.push('Destination');
+  const missingLocationInstruction = `Please set: ${missingLocationFields.join(' and ')}.`;
 
   const preferences = [
-    { value: PublicTransportPreference.BALANCED, label: 'Recommended', icon: 'star' },
     { value: PublicTransportPreference.LOWEST_FARE, label: 'Lowest Fare', icon: 'cash' },
     { value: PublicTransportPreference.SHORTEST_TIME, label: 'Shortest Time', icon: 'clock-fast' },
     { value: PublicTransportPreference.FEWEST_TRANSFERS, label: 'Fewest Transfers', icon: 'swap-horizontal' }
@@ -72,43 +158,58 @@ const PublicTransportScreen: React.FC = () => {
     });
   };
 
+  const handleRequestLocationPickFromMap = (target: 'origin' | 'destination') => {
+    setLocationPickMode(target);
+    setShowMap(true);
+    setSheetExpanded(false);
+  };
+
+  const handleHideMap = () => {
+    setShowMap(false);
+    setLocationPickMode(null);
+  };
+
+  const handleOriginSelectedFromMap = (location: Location) => {
+    setSelectedOrigin(location);
+    setLocationPickMode(null);
+  };
+
+  const handleDestinationSelectedFromMap = (location: Location) => {
+    setSelectedDestination(location);
+    setLocationPickMode(null);
+  };
+
   const renderLocationForm = (opts?: { compact?: boolean }) => {
     const compact = !!opts?.compact;
     return (
       <>
         {!compact && <Text style={styles.sectionTitle}>Locations</Text>}
 
-        <TouchableOpacity
-          style={styles.mapButtonPrimary}
-          onPress={() => setShowMap(!showMap)}
-        >
-          <MaterialCommunityIcons
-            name="map-marker"
-            size={18}
-            color={colors.textWhite}
-            style={styles.mapButtonPrimaryIcon}
-          />
-          <Text style={styles.mapButtonTextPrimary}>
-            {showMap ? 'Hide Map' : 'Select from Map (Recommended)'}
-          </Text>
-        </TouchableOpacity>
-        {!showMap && (
+        {showMap ? (
+          <Button mode="outlined" onPress={handleHideMap} style={styles.hideMapButton} icon="eye-off">
+            Hide Map
+          </Button>
+        ) : (
           <Text style={styles.mapButtonHint}>
-            Recommended for easier pinning.
+            Tip: Tap the pin button inside Origin or Destination textbox to pick directly from map.
           </Text>
         )}
 
         <DestinationInput
-          label="Origin"
+          label="Origin *"
           value={selectedOrigin}
           onValueChange={setSelectedOrigin}
           placeholder="Where are you starting from?"
+          onPinPress={() => handleRequestLocationPickFromMap('origin')}
+          pinColor="#27ae60"
         />
         <DestinationInput
-          label="Destination"
+          label="Destination *"
           value={selectedDestination}
           onValueChange={setSelectedDestination}
           placeholder="Where are you going?"
+          onPinPress={() => handleRequestLocationPickFromMap('destination')}
+          pinColor="#e74c3c"
         />
       </>
     );
@@ -221,8 +322,10 @@ const PublicTransportScreen: React.FC = () => {
         <MapViewComponent
           origin={selectedOrigin}
           destination={selectedDestination}
-          onOriginSelect={setSelectedOrigin}
-          onDestinationSelect={setSelectedDestination}
+          onOriginSelect={handleOriginSelectedFromMap}
+          onDestinationSelect={handleDestinationSelectedFromMap}
+          autoSelectMode={locationPickMode}
+          hideSelectionControls
           boundaryMode="public"
         />
 
@@ -234,14 +337,16 @@ const PublicTransportScreen: React.FC = () => {
               transform: [{ translateY: sheetTranslateY }],
             },
           ]}
+          {...topCardPanResponder.panHandlers}
         >
           <Pressable
             style={styles.sheetHandleArea}
-            onPress={() => setSheetExpanded((v) => !v)}
+            onPress={toggleSheet}
+            {...sheetHandlePanResponder.panHandlers}
           >
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetHint}>
-              {sheetExpanded ? 'Tap to view the map again' : 'Tap to expand'}
+              {sheetExpanded ? 'Tap or drag down to view the map' : 'Tap or drag up to expand. Other fields are on this card.'}
             </Text>
           </Pressable>
 
@@ -249,18 +354,22 @@ const PublicTransportScreen: React.FC = () => {
             style={styles.sheetScroll}
             contentContainerStyle={styles.sheetScrollContent}
             keyboardShouldPersistTaps="handled"
-            onScrollBeginDrag={() => setSheetExpanded(true)}
+            onScrollBeginDrag={expandSheet}
             onTouchStart={() => {
-              if (!sheetExpanded) setSheetExpanded(true);
+              if (!sheetExpanded) expandSheet();
             }}
           >
             <View style={styles.sheetSection}>{renderLocationForm({ compact: true })}</View>
             <View style={styles.sheetDivider} />
             <View style={styles.sheetSection}>{renderPreferenceControls()}</View>
             <View style={styles.sheetFooter}>
+              {!hasRequiredLocations && (
+                <Text style={styles.requiredHint}>{missingLocationInstruction}</Text>
+              )}
               <Button
                 mode="contained"
                 onPress={handleFindRoutes}
+                disabled={!hasRequiredLocations}
                 style={styles.findButton}
                 contentStyle={styles.findButtonContent}
                 labelStyle={styles.findButtonLabel}
@@ -385,9 +494,13 @@ const PublicTransportScreen: React.FC = () => {
       </View>
 
       <View style={styles.footer}>
+        {!hasRequiredLocations && (
+          <Text style={styles.requiredHint}>{missingLocationInstruction}</Text>
+        )}
         <Button
           mode="contained"
           onPress={handleFindRoutes}
+          disabled={!hasRequiredLocations}
           style={styles.findButton}
           contentStyle={styles.findButtonContent}
           labelStyle={styles.findButtonLabel}
@@ -455,6 +568,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
   },
+  requiredHint: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
   header: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
@@ -491,46 +610,18 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.lg,
     textAlign: 'center'
   },
-  mapButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.md,
-    backgroundColor: colors.primaryLight,
-    borderRadius: borderRadius.lg,
-    marginTop: spacing.md
-  },
-  mapButtonPrimary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.md,
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.lg,
-    marginTop: spacing.md,
-    position: 'relative'
-  },
-  mapButtonPrimaryIcon: {
-    position: 'absolute',
-    left: spacing.md
-  },
-  mapButtonText: {
-    color: colors.primary,
-    fontSize: fontSize.lg,
-    fontWeight: '500',
-    marginLeft: spacing.sm
-  },
-  mapButtonTextPrimary: {
-    color: colors.textWhite,
-    fontSize: fontSize.lg,
-    fontWeight: '600',
-    textAlign: 'center'
-  },
   mapButtonHint: {
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  hideMapButton: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+    borderRadius: borderRadius.lg,
+    borderColor: colors.gray5,
   },
   mapContainer: {
     height: 300,

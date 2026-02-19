@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Alert, Animated, Dimensions, Pressable, FlatList, ListRenderItem, Platform } from 'react-native';
+import { View, Text, StyleSheet, Alert, Animated, Dimensions, Pressable, FlatList, ListRenderItem, Platform, PanResponder } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
@@ -23,7 +23,7 @@ const RouteResultsScreen: React.FC = () => {
   const navigation = useNavigation<RouteResultsNavigationProp>();
   const route = useRoute<RouteResultsRouteProp>();
   const { origin, destination, preference, budget, maxTransfers, preferredModes } = route.params;
-  const { isLoading, setIsLoading, setError } = useApp();
+  const { isLoading, setIsLoading } = useApp();
   
   const [routes, setRoutes] = useState<Route[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
@@ -32,13 +32,42 @@ const RouteResultsScreen: React.FC = () => {
   const isMountedRef = useRef<boolean>(true);
   const [isGeometryLoading, setIsGeometryLoading] = useState<boolean>(false);
   const geometryCacheRef = useRef<Map<string, Route>>(new Map());
-  const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
+  const [sheetExpanded, setSheetExpanded] = useState<boolean>(true);
 
-  const sheetProgress = useRef(new Animated.Value(0)).current; // 0=collapsed, 1=expanded
-  const isExpandedRef = useRef<boolean>(false);
+  const sortRoutesByPreference = useCallback((items: Route[]) => {
+    const sorted = [...items];
+    sorted.sort((a, b) => {
+      const timeDelta = a.totalTime - b.totalTime;
+      const fareDelta = a.totalFare - b.totalFare;
+      const transferDelta = a.totalTransfers - b.totalTransfers;
+
+      if (preference === 'shortest_time') {
+        return timeDelta || transferDelta || fareDelta;
+      }
+
+      if (preference === 'lowest_fare') {
+        return fareDelta || timeDelta || transferDelta;
+      }
+
+      if (preference === 'fewest_transfers') {
+        return transferDelta || timeDelta || fareDelta;
+      }
+
+      // balanced / recommended: prioritize fuzzy score, then prefer quicker routes on ties.
+      const fuzzyA = Number(a.fuzzyScore || 0);
+      const fuzzyB = Number(b.fuzzyScore || 0);
+      const fuzzyDelta = fuzzyB - fuzzyA;
+      return fuzzyDelta || timeDelta || fareDelta || transferDelta;
+    });
+    return sorted;
+  }, [preference]);
+
+  const sheetProgress = useRef(new Animated.Value(1)).current; // 0=collapsed, 1=expanded
+  const isExpandedRef = useRef<boolean>(true);
   const winH = Dimensions.get('window').height;
   const sheetCollapsedH = 220;
   const sheetExpandedH = Math.max(560, Math.round(winH * 0.92));
+  const TOP_DRAG_ZONE_HEIGHT = 120;
   const sheetHeight = sheetProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [sheetCollapsedH, sheetExpandedH]
@@ -67,6 +96,74 @@ const RouteResultsScreen: React.FC = () => {
       bounciness: 0
     }).start();
   };
+
+  const handlePanResponder = useMemo(
+    () => PanResponder.create({
+      onMoveShouldSetPanResponder: (_evt, gestureState) => {
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onMoveShouldSetPanResponderCapture: (_evt, gestureState) => {
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onPanResponderRelease: (_evt, gestureState) => {
+        if (gestureState.dy < -18) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 18) {
+          collapseSheet();
+        }
+      },
+      onPanResponderTerminate: (_evt, gestureState) => {
+        if (gestureState.dy < -18) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 18) {
+          collapseSheet();
+        }
+      }
+    }),
+    [collapseSheet, expandSheet]
+  );
+
+  const topCardPanResponder = useMemo(
+    () => PanResponder.create({
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        const withinTopZone = (evt?.nativeEvent?.locationY ?? Number.MAX_SAFE_INTEGER) <= TOP_DRAG_ZONE_HEIGHT;
+        if (!withinTopZone) return false;
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
+        const withinTopZone = (evt?.nativeEvent?.locationY ?? Number.MAX_SAFE_INTEGER) <= TOP_DRAG_ZONE_HEIGHT;
+        if (!withinTopZone) return false;
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onPanResponderRelease: (_evt, gestureState) => {
+        if (gestureState.dy < -12) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 12) {
+          collapseSheet();
+        }
+      },
+      onPanResponderTerminate: (_evt, gestureState) => {
+        if (gestureState.dy < -12) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 12) {
+          collapseSheet();
+        }
+      }
+    }),
+    [collapseSheet, expandSheet]
+  );
 
   const selectedRoute = useMemo(() => {
     if (!selectedRouteId) return null;
@@ -102,7 +199,7 @@ const RouteResultsScreen: React.FC = () => {
       const ok = await pingBackend();
       if (!ok) {
         if (!isMountedRef.current) return;
-        setError('Backend unreachable. Check IP, firewall, and Wi‑Fi.');
+        setRoutes([]);
         return;
       }
       const data = await fetchRoutes(origin, destination, preference, {
@@ -111,22 +208,20 @@ const RouteResultsScreen: React.FC = () => {
         preferredModes
       });
       if (!isMountedRef.current) return;
-      setRoutes(data);
+      const sortedRoutes = sortRoutesByPreference(data);
+      setRoutes(sortedRoutes);
       geometryCacheRef.current.clear();
       setSelectedRouteGeometry(null);
-      if (data.length > 0) {
-        setSelectedRouteId(data[0].id); // Select best route by default
-      }
+      setSelectedRouteId(null);
     } catch {
       if (!isMountedRef.current) return;
-      setError('Failed to fetch routes. Please try again.');
-      Alert.alert('Error', 'Failed to fetch routes');
+      setRoutes([]);
     } finally {
       if (isMountedRef.current) {
         setIsLoading(false);
       }
     }
-  }, [budget, destination, maxTransfers, origin, preference, preferredModes, setError, setIsLoading]);
+  }, [budget, destination, maxTransfers, origin, preference, preferredModes, setIsLoading, sortRoutesByPreference]);
 
   useEffect(() => {
     // Guard against duplicate fetches caused by re-mounts or fast refresh
@@ -175,8 +270,9 @@ const RouteResultsScreen: React.FC = () => {
       isSelected={selectedRoute?.id === item.id}
       rank={index + 1}
       onSelect={handleSelectRoute}
+      onViewMap={collapseSheet}
     />
-  ), [handleSelectRoute, selectedRoute?.id]);
+  ), [collapseSheet, handleSelectRoute, selectedRoute?.id]);
 
   const handleAddDestination = () => {
     if (selectedRoute) {
@@ -201,12 +297,13 @@ const RouteResultsScreen: React.FC = () => {
         <View style={styles.emptyContent}>
           <Text style={styles.emptyTitle}>No Routes Found</Text>
           <Text style={styles.emptyText}>
-            We couldn't find any routes for your selected locations.
+            We couldn't find any routes for your selected preference and locations.
           </Text>
           <Button
             mode="contained"
             onPress={() => navigation.goBack()}
             style={styles.retryButton}
+            labelStyle={styles.retryButtonLabel}
           >
             Try Again
           </Button>
@@ -236,7 +333,7 @@ const RouteResultsScreen: React.FC = () => {
       </View>
 
       {/* Bottom sheet: expands as user scrolls */}
-      <Animated.View style={[styles.sheet, { height: sheetHeight }]}>
+      <Animated.View style={[styles.sheet, { height: sheetHeight }]} {...topCardPanResponder.panHandlers}>
         <Pressable
           style={styles.sheetHandleWrap}
           onPress={() => {
@@ -246,10 +343,11 @@ const RouteResultsScreen: React.FC = () => {
               expandSheet();
             }
           }}
+          {...handlePanResponder.panHandlers}
         >
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetHint}>
-            {sheetExpanded ? 'Tap to view the map again' : 'Tap to expand'}
+            {sheetExpanded ? 'Tap or drag down to view the map' : 'Tap or drag up to expand'}
           </Text>
         </Pressable>
 
@@ -268,6 +366,9 @@ const RouteResultsScreen: React.FC = () => {
           overScrollMode="never"
           scrollEventThrottle={16}
           onScrollBeginDrag={expandSheet}
+          onTouchStart={() => {
+            if (!sheetExpanded) expandSheet();
+          }}
           onMomentumScrollEnd={(e) => {
             const y = e?.nativeEvent?.contentOffset?.y ?? 0;
             if (y <= 0) collapseSheet();
@@ -277,6 +378,21 @@ const RouteResultsScreen: React.FC = () => {
             if (y <= 0) collapseSheet();
           }}
         />
+
+        {!selectedRoute && (
+          <View style={styles.footer}>
+            <Text style={styles.summaryTitle}>Trip Summary</Text>
+            <Text style={styles.summaryEmptyHint}>Select one route result first to view steps and trip summary.</Text>
+            <Button
+              mode="contained"
+              disabled
+              style={styles.continueButtonDisabled}
+              icon="plus"
+            >
+              Add Another Destination
+            </Button>
+          </View>
+        )}
 
         {selectedRoute && (
           <View style={styles.footer}>
@@ -361,7 +477,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: 24
   },
   retryButton: {
-    borderRadius: borderRadius.xl
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.primary
+  },
+  retryButtonLabel: {
+    color: colors.textWhite,
+    fontWeight: '700'
   },
   mapOverlay: {
     position: 'absolute',
@@ -427,6 +548,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4
   },
+  summaryEmptyHint: {
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
   summaryRow: {
     flexDirection: 'row',
     backgroundColor: colors.gray7,
@@ -463,6 +589,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   continueButton: {
     borderRadius: borderRadius.xl,
     backgroundColor: colors.primary
+  },
+  continueButtonDisabled: {
+    borderRadius: borderRadius.xl,
+    backgroundColor: colors.gray5
   }
 });
 

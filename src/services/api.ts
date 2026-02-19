@@ -251,7 +251,6 @@ export const fetchRoutes = async (
     }
   }
 
-  console.error('[API] Error fetching routes (final):', lastError);
   throw lastError || new Error('Failed to fetch routes');
 };
 

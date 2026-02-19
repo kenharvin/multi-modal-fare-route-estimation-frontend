@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Dimensions, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View, PanResponder } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
@@ -7,7 +7,6 @@ import { Vehicle, VehicleCategory, Stopover, StopoverType, Location, DrivingPref
 import { useLocation } from '@context/LocationContext';
 import { useApp } from '@context/AppContext';
 import DestinationInput from '@components/DestinationInput';
-import StopoverInput from '@components/StopoverInput';
 import MapViewComponent from '@components/MapViewComponent';
 import { Button, TextInput, Switch } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -75,12 +74,11 @@ const PrivateVehicleScreen: React.FC = () => {
   const [vehicleFuelSettings, setVehicleFuelSettings] = useState<PrivateVehicleFuelSetting[]>(FALLBACK_PRIVATE_FUEL_SETTINGS);
   const [fuelPriceOptions, setFuelPriceOptions] = useState<PrivateFuelPriceOption[]>(FALLBACK_FUEL_PRICE_OPTIONS);
   const [selectedFuelType, setSelectedFuelType] = useState<string>('gasoline_ron91');
-  const [stopovers, setStopovers] = useState<Stopover[]>([]);
+  const [stopoverLocations, setStopoverLocations] = useState<(Location | null)[]>([]);
   const [showMap, setShowMap] = useState<boolean>(false);
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
-  const [stopoverPickActive, setStopoverPickActive] = useState<boolean>(false);
-  const [pendingStopoverType, setPendingStopoverType] = useState<StopoverType>(StopoverType.OTHER);
-  const [mapOpenedForStopoverPick, setMapOpenedForStopoverPick] = useState<boolean>(false);
+  const [locationPickMode, setLocationPickMode] = useState<'origin' | 'destination' | null>(null);
+  const [pendingStopoverIndex, setPendingStopoverIndex] = useState<number | null>(null);
   const [preferences, setPreferences] = useState<DrivingPreferences>({
     avoidTolls: false,
     avoidHighways: false,
@@ -101,7 +99,94 @@ const PrivateVehicleScreen: React.FC = () => {
     }).start();
   }, [sheetExpanded, sheetHiddenOffset, sheetTranslateY]);
 
+  const expandSheet = () => setSheetExpanded(true);
+  const collapseSheet = () => setSheetExpanded(false);
+  const toggleSheet = () => setSheetExpanded((v) => !v);
   const MAX_STOPOVERS = 3;
+  const TOP_DRAG_ZONE_HEIGHT = 120;
+
+  const stopovers = useMemo<Stopover[]>(() => {
+    return stopoverLocations
+      .filter((location): location is Location => !!location)
+      .map((location, index) => ({
+        id: `stopover-${index}`,
+        location,
+        type: StopoverType.OTHER,
+      }));
+  }, [stopoverLocations]);
+
+  const sheetHandlePanResponder = useMemo(
+    () => PanResponder.create({
+      onMoveShouldSetPanResponder: (_evt, gestureState) => {
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onMoveShouldSetPanResponderCapture: (_evt, gestureState) => {
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onPanResponderRelease: (_evt, gestureState) => {
+        if (gestureState.dy < -18) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 18) {
+          collapseSheet();
+        }
+      },
+      onPanResponderTerminate: (_evt, gestureState) => {
+        if (gestureState.dy < -18) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 18) {
+          collapseSheet();
+        }
+      }
+    }),
+    []
+  );
+
+  const topCardPanResponder = useMemo(
+    () => PanResponder.create({
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        const withinTopZone = (evt?.nativeEvent?.locationY ?? Number.MAX_SAFE_INTEGER) <= TOP_DRAG_ZONE_HEIGHT;
+        if (!withinTopZone) return false;
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
+        const withinTopZone = (evt?.nativeEvent?.locationY ?? Number.MAX_SAFE_INTEGER) <= TOP_DRAG_ZONE_HEIGHT;
+        if (!withinTopZone) return false;
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onPanResponderRelease: (_evt, gestureState) => {
+        if (gestureState.dy < -12) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 12) {
+          collapseSheet();
+        }
+      },
+      onPanResponderTerminate: (_evt, gestureState) => {
+        if (gestureState.dy < -12) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 12) {
+          collapseSheet();
+        }
+      }
+    }),
+    []
+  );
+  const hasRequiredLocations = !!selectedOrigin && !!selectedDestination;
+  const missingLocationFields: string[] = [];
+  if (!selectedOrigin) missingLocationFields.push('Origin');
+  if (!selectedDestination) missingLocationFields.push('Destination');
+  const missingLocationInstruction = `Please set: ${missingLocationFields.join(' and ')}.`;
 
   useFocusEffect(
     React.useCallback(() => {
@@ -201,55 +286,58 @@ const PrivateVehicleScreen: React.FC = () => {
     }
   };
 
-  const handleAddStopover = (stopover: Stopover) => {
-    if (stopovers.length < MAX_STOPOVERS) {
-      setStopovers([...stopovers, stopover]);
-    } else {
-      Alert.alert('Maximum Stopovers', `You can add up to ${MAX_STOPOVERS} stopovers`);
-    }
+  const handleAddStopoverField = () => {
+    setStopoverLocations((prev) => {
+      if (prev.length >= MAX_STOPOVERS) return prev;
+      return [...prev, null];
+    });
   };
 
-  const handleRequestStopoverPickFromMap = (type: StopoverType) => {
-    if (stopovers.length >= MAX_STOPOVERS) {
-      Alert.alert('Maximum Stopovers', `You can add up to ${MAX_STOPOVERS} stopovers`);
-      return;
-    }
-    setPendingStopoverType(type);
-    setStopoverPickActive(true);
-    setMapOpenedForStopoverPick(true);
+  const handleRequestStopoverPickFromMap = (index: number) => {
+    setLocationPickMode(null);
+    setPendingStopoverIndex(index);
     setShowMap(true);
+    setSheetExpanded(false);
   };
 
-  const handleStopoverSelectedFromMap = (location: Location) => {
-    const newStopover: Stopover = {
-      id: Date.now().toString(),
-      location,
-      type: pendingStopoverType
-    };
-    handleAddStopover(newStopover);
-    setStopoverPickActive(false);
-
-    // If the map was opened specifically for stopover picking, close it after selection.
-    if (mapOpenedForStopoverPick) {
-      setShowMap(false);
-    }
-    setMapOpenedForStopoverPick(false);
+  const handleRequestLocationPickFromMap = (target: 'origin' | 'destination') => {
+    setLocationPickMode(target);
+    setPendingStopoverIndex(null);
+    setShowMap(true);
+    setSheetExpanded(false);
   };
 
-  const handleToggleMap = () => {
-    setShowMap((prev) => {
-      const next = !prev;
-      // If user manually hides the map while armed for stopover selection, cancel that mode.
-      if (!next && stopoverPickActive) {
-        setStopoverPickActive(false);
-        setMapOpenedForStopoverPick(false);
+  const handleHideMap = () => {
+    setShowMap(false);
+    setLocationPickMode(null);
+    setPendingStopoverIndex(null);
+  };
+
+  const handleStopoverChange = (index: number, location: Location | null) => {
+    setStopoverLocations((prev) => {
+      const next = [...prev];
+      while (next.length <= index) {
+        next.push(null);
       }
+      next[index] = location;
       return next;
     });
   };
 
-  const handleRemoveStopover = (id: string) => {
-    setStopovers(stopovers.filter(s => s.id !== id));
+  const handleOriginSelectedFromMap = (location: Location) => {
+    setSelectedOrigin(location);
+    setLocationPickMode(null);
+  };
+
+  const handleDestinationSelectedFromMap = (location: Location) => {
+    setSelectedDestination(location);
+    setLocationPickMode(null);
+  };
+
+  const handleStopoverSelectedFromMap = (location: Location) => {
+    if (pendingStopoverIndex === null) return;
+    handleStopoverChange(pendingStopoverIndex, location);
+    setPendingStopoverIndex(null);
   };
 
   const handleCalculateRoute = async () => {
@@ -283,37 +371,58 @@ const PrivateVehicleScreen: React.FC = () => {
       <>
         {!compact && <Text style={styles.sectionTitle}>Locations</Text>}
 
-        <TouchableOpacity style={styles.mapButtonPrimary} onPress={handleToggleMap}>
-          <MaterialCommunityIcons
-            name="map-marker"
-            size={18}
-            color={colors.textWhite}
-            style={styles.mapButtonPrimaryIcon}
-          />
-          <Text style={styles.mapButtonTextPrimary}>
-            {showMap ? 'Hide Map' : 'Select from Map (Recommended)'}
-          </Text>
-        </TouchableOpacity>
-        {!showMap && (
+        {showMap ? (
+          <Button mode="outlined" onPress={handleHideMap} style={styles.hideMapButton} icon="eye-off">
+            Hide Map
+          </Button>
+        ) : (
           <Text style={styles.mapButtonHint}>
-            Recommended for easier pinning.
+            Tip: Tap the pin button inside Origin or Destination textbox to pick directly from map.
           </Text>
         )}
 
         <DestinationInput
-          label="Origin"
+          label="Origin *"
           value={selectedOrigin}
           onValueChange={setSelectedOrigin}
           placeholder="Starting point"
           searchProvider={(q) => searchPois(q, 10, currentLocation)}
+          onPinPress={() => handleRequestLocationPickFromMap('origin')}
+          pinColor="#27ae60"
         />
         <DestinationInput
-          label="Destination"
+          label="Destination *"
           value={selectedDestination}
           onValueChange={setSelectedDestination}
           placeholder="Final destination"
           searchProvider={(q) => searchPois(q, 10, currentLocation)}
+          onPinPress={() => handleRequestLocationPickFromMap('destination')}
+          pinColor="#e74c3c"
         />
+
+        {stopoverLocations.length < MAX_STOPOVERS && (
+          <Button
+            mode="outlined"
+            onPress={handleAddStopoverField}
+            style={styles.addStopoverButton}
+            icon="plus"
+          >
+            Add Stopover (Optional)
+          </Button>
+        )}
+
+        {stopoverLocations.map((location, index) => (
+          <DestinationInput
+            key={`stopover-input-${index}`}
+            label={`Stopover ${index + 1} (Optional)`}
+            value={location}
+            onValueChange={(value) => handleStopoverChange(index, value)}
+            placeholder="Search stopover"
+            searchProvider={(q) => searchPois(q, 10, currentLocation)}
+            onPinPress={() => handleRequestStopoverPickFromMap(index)}
+            pinColor="#2980b9"
+          />
+        ))}
       </>
     );
   };
@@ -324,11 +433,12 @@ const PrivateVehicleScreen: React.FC = () => {
         <MapViewComponent
           origin={selectedOrigin}
           destination={selectedDestination}
-          onOriginSelect={setSelectedOrigin}
-          onDestinationSelect={setSelectedDestination}
+          onOriginSelect={handleOriginSelectedFromMap}
+          onDestinationSelect={handleDestinationSelectedFromMap}
           stopovers={stopovers}
           onStopoverSelect={handleStopoverSelectedFromMap}
-          autoSelectMode={stopoverPickActive ? 'stopover' : null}
+          autoSelectMode={locationPickMode || (pendingStopoverIndex !== null ? 'stopover' : null)}
+          hideSelectionControls
           boundaryMode="private"
         />
 
@@ -340,14 +450,16 @@ const PrivateVehicleScreen: React.FC = () => {
               transform: [{ translateY: sheetTranslateY }],
             },
           ]}
+          {...topCardPanResponder.panHandlers}
         >
           <Pressable
             style={styles.sheetHandleArea}
-            onPress={() => setSheetExpanded((v) => !v)}
+            onPress={toggleSheet}
+            {...sheetHandlePanResponder.panHandlers}
           >
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetHint}>
-              {sheetExpanded ? 'Tap to view the map again' : 'Tap to expand'}
+              {sheetExpanded ? 'Tap or drag down to view the map' : 'Tap or drag up to expand. Other fields are on this card.'}
             </Text>
           </Pressable>
 
@@ -355,26 +467,12 @@ const PrivateVehicleScreen: React.FC = () => {
             style={styles.sheetScroll}
             contentContainerStyle={styles.sheetScrollContent}
             keyboardShouldPersistTaps="handled"
-            onScrollBeginDrag={() => setSheetExpanded(true)}
+            onScrollBeginDrag={expandSheet}
             onTouchStart={() => {
-              if (!sheetExpanded) setSheetExpanded(true);
+              if (!sheetExpanded) expandSheet();
             }}
           >
             <View style={styles.sheetSection}>{renderLocationForm({ compact: true })}</View>
-            <View style={styles.sheetDivider} />
-
-            <View style={styles.sheetSection}>
-              <Text style={styles.sectionTitle}>Stopovers (Optional)</Text>
-              <Text style={styles.sectionSubtitle}>Add up to {MAX_STOPOVERS} stopovers</Text>
-              <StopoverInput
-                stopovers={stopovers}
-                onAddStopover={handleAddStopover}
-                onRemoveStopover={handleRemoveStopover}
-                searchProvider={(q) => searchPois(q, 10, currentLocation)}
-                onPickFromMap={handleRequestStopoverPickFromMap}
-              />
-            </View>
-
             <View style={styles.sheetDivider} />
             <View style={styles.sheetSection}>
               <Text style={styles.sectionTitle}>Vehicle Information</Text>
@@ -416,40 +514,25 @@ const PrivateVehicleScreen: React.FC = () => {
                 Note: Fuel efficiency shown is an average value based on online data. You can enter your vehicle's actual fuel efficiency if you know it.
               </Text>
 
-              <View style={styles.preferenceRow}>
-                <View style={styles.preferenceInfo}>
-                  <MaterialCommunityIcons name="tune-vertical" size={18} color={colors.textSecondary} />
-                  <Text style={styles.preferenceText}>Use custom fuel price (optional)</Text>
-                </View>
-                <Switch
-                  value={useCustomFuelPrice}
-                  onValueChange={handleToggleCustomFuelPrice}
-                  color={colors.primary}
-                />
-              </View>
-
               <Text style={styles.sectionSubtitle}>Fuel Type</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.fuelTypeRow}
-                style={styles.fuelTypeScroll}
-              >
-                {fuelPriceOptions.map((option) => {
-                  const active = selectedFuelType === option.fuel_type;
-                  return (
-                    <TouchableOpacity
-                      key={option.fuel_type}
-                      style={[styles.fuelTypeButton, active && styles.fuelTypeButtonActive]}
-                      onPress={() => handleFuelTypeChange(option.fuel_type)}
-                    >
-                      <Text style={[styles.fuelTypeText, active && styles.fuelTypeTextActive]}>
-                        {FUEL_TYPE_LABELS[option.fuel_type] || option.fuel_type}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+              <View style={styles.fuelTypeScroll}>
+                <View style={styles.fuelTypeRow}>
+                  {fuelPriceOptions.map((option) => {
+                    const active = selectedFuelType === option.fuel_type;
+                    return (
+                      <TouchableOpacity
+                        key={option.fuel_type}
+                        style={[styles.fuelTypeButton, active && styles.fuelTypeButtonActive]}
+                        onPress={() => handleFuelTypeChange(option.fuel_type)}
+                      >
+                        <Text style={[styles.fuelTypeText, active && styles.fuelTypeTextActive]}>
+                          {FUEL_TYPE_LABELS[option.fuel_type] || option.fuel_type}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
 
               <TextInput
                 label={useCustomFuelPrice ? 'Fuel Price (₱/L) custom' : 'Fuel Price (₱/L)'}
@@ -461,6 +544,18 @@ const PrivateVehicleScreen: React.FC = () => {
                 editable={useCustomFuelPrice}
               />
               <Text style={styles.fuelPriceNote}>Note: Fuel price indicated is average city rate.</Text>
+
+              <View style={styles.preferenceRow}>
+                <View style={styles.preferenceInfo}>
+                  <MaterialCommunityIcons name="tune-vertical" size={18} color={colors.textSecondary} />
+                  <Text style={styles.preferenceText}>Use custom fuel price (optional)</Text>
+                </View>
+                <Switch
+                  value={useCustomFuelPrice}
+                  onValueChange={handleToggleCustomFuelPrice}
+                  color={colors.primary}
+                />
+              </View>
             </View>
 
             <View style={styles.sheetDivider} />
@@ -505,9 +600,13 @@ const PrivateVehicleScreen: React.FC = () => {
             </View>
 
             <View style={styles.sheetFooter}>
+              {!hasRequiredLocations && (
+                <Text style={styles.requiredHint}>{missingLocationInstruction}</Text>
+              )}
               <Button
                 mode="contained"
                 onPress={handleCalculateRoute}
+                disabled={!hasRequiredLocations}
                 style={styles.calculateButton}
                 contentStyle={styles.calculateButtonContent}
                 labelStyle={styles.calculateButtonLabel}
@@ -530,19 +629,6 @@ const PrivateVehicleScreen: React.FC = () => {
 
       <View style={styles.section}>
         {renderLocationForm()}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Stopovers (Optional)</Text>
-        <Text style={styles.sectionSubtitle}>Add up to {MAX_STOPOVERS} stopovers</Text>
-        
-        <StopoverInput
-          stopovers={stopovers}
-          onAddStopover={handleAddStopover}
-          onRemoveStopover={handleRemoveStopover}
-          searchProvider={(q) => searchPois(q, 10, currentLocation)}
-          onPickFromMap={handleRequestStopoverPickFromMap}
-        />
       </View>
 
       <View style={styles.section}>
@@ -585,40 +671,25 @@ const PrivateVehicleScreen: React.FC = () => {
           Note: Fuel efficiency shown is an average value based on online data. You can enter your vehicle's actual fuel efficiency if you know it.
         </Text>
 
-        <View style={styles.preferenceRow}>
-          <View style={styles.preferenceInfo}>
-            <MaterialCommunityIcons name="tune-vertical" size={18} color={colors.textSecondary} />
-            <Text style={styles.preferenceText}>Use custom fuel price (optional)</Text>
-          </View>
-          <Switch
-            value={useCustomFuelPrice}
-            onValueChange={handleToggleCustomFuelPrice}
-            color={colors.primary}
-          />
-        </View>
-
         <Text style={styles.sectionSubtitle}>Fuel Type</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.fuelTypeRow}
-          style={styles.fuelTypeScroll}
-        >
-          {fuelPriceOptions.map((option) => {
-            const active = selectedFuelType === option.fuel_type;
-            return (
-              <TouchableOpacity
-                key={option.fuel_type}
-                style={[styles.fuelTypeButton, active && styles.fuelTypeButtonActive]}
-                onPress={() => handleFuelTypeChange(option.fuel_type)}
-              >
-                <Text style={[styles.fuelTypeText, active && styles.fuelTypeTextActive]}>
-                  {FUEL_TYPE_LABELS[option.fuel_type] || option.fuel_type}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        <View style={styles.fuelTypeScroll}>
+          <View style={styles.fuelTypeRow}>
+            {fuelPriceOptions.map((option) => {
+              const active = selectedFuelType === option.fuel_type;
+              return (
+                <TouchableOpacity
+                  key={option.fuel_type}
+                  style={[styles.fuelTypeButton, active && styles.fuelTypeButtonActive]}
+                  onPress={() => handleFuelTypeChange(option.fuel_type)}
+                >
+                  <Text style={[styles.fuelTypeText, active && styles.fuelTypeTextActive]}>
+                    {FUEL_TYPE_LABELS[option.fuel_type] || option.fuel_type}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
 
         <TextInput
           label={useCustomFuelPrice ? 'Fuel Price (₱/L) custom' : 'Fuel Price (₱/L)'}
@@ -630,6 +701,18 @@ const PrivateVehicleScreen: React.FC = () => {
           editable={useCustomFuelPrice}
         />
         <Text style={styles.fuelPriceNote}>Note: Fuel price indicated is average city rate.</Text>
+
+        <View style={styles.preferenceRow}>
+          <View style={styles.preferenceInfo}>
+            <MaterialCommunityIcons name="tune-vertical" size={18} color={colors.textSecondary} />
+            <Text style={styles.preferenceText}>Use custom fuel price (optional)</Text>
+          </View>
+          <Switch
+            value={useCustomFuelPrice}
+            onValueChange={handleToggleCustomFuelPrice}
+            color={colors.primary}
+          />
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -673,9 +756,13 @@ const PrivateVehicleScreen: React.FC = () => {
       </View>
 
       <View style={styles.footer}>
+        {!hasRequiredLocations && (
+          <Text style={styles.requiredHint}>{missingLocationInstruction}</Text>
+        )}
         <Button
           mode="contained"
           onPress={handleCalculateRoute}
+          disabled={!hasRequiredLocations}
           style={styles.calculateButton}
           contentStyle={styles.calculateButtonContent}
           labelStyle={styles.calculateButtonLabel}
@@ -743,6 +830,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
   },
+  requiredHint: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
   header: {
     padding: spacing.lg,
     marginHorizontal: spacing.lg,
@@ -784,46 +877,23 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.md,
     textAlign: 'center'
   },
-  mapButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.md,
-    backgroundColor: colors.primaryLight,
-    borderRadius: borderRadius.lg,
-    marginTop: spacing.md
-  },
-  mapButtonPrimary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.md,
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.lg,
-    marginTop: spacing.md,
-    position: 'relative'
-  },
-  mapButtonPrimaryIcon: {
-    position: 'absolute',
-    left: spacing.md
-  },
-  mapButtonText: {
-    color: colors.primary,
-    fontSize: fontSize.lg,
-    fontWeight: '500',
-    marginLeft: spacing.sm
-  },
-  mapButtonTextPrimary: {
-    color: colors.textWhite,
-    fontSize: fontSize.lg,
-    fontWeight: '600',
-    textAlign: 'center'
-  },
   mapButtonHint: {
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  hideMapButton: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+    borderRadius: borderRadius.lg,
+    borderColor: colors.gray5,
+  },
+  addStopoverButton: {
+    borderRadius: borderRadius.xl,
+    borderColor: colors.primary,
+    marginBottom: spacing.lg,
   },
   vehiclesContainer: {
     flexDirection: 'row',
@@ -835,11 +905,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   fuelTypeRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     paddingHorizontal: spacing.xs,
   },
   fuelTypeButton: {
-    minWidth: 150,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.md,
@@ -920,12 +991,17 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   preferenceInfo: {
     flexDirection: 'row',
-    alignItems: 'center'
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 0,
+    marginRight: spacing.sm,
   },
   preferenceText: {
     fontSize: fontSize.lg,
     color: colors.textPrimary,
-    marginLeft: spacing.md
+    marginLeft: spacing.md,
+    flexShrink: 1,
+    flexWrap: 'wrap',
   },
   footer: {
     padding: spacing.lg,

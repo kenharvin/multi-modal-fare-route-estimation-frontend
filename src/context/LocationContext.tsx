@@ -9,6 +9,7 @@ interface LocationContextType {
   selectedDestination: Location | null;
   setSelectedOrigin: (location: Location | null) => void;
   setSelectedDestination: (location: Location | null) => void;
+  clearSelectedLocations: () => void;
   requestLocationPermission: () => Promise<boolean>;
   getCurrentLocation: () => Promise<Coordinates | null>;
 }
@@ -20,6 +21,11 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [locationPermission, setLocationPermission] = useState<boolean>(false);
   const [selectedOrigin, setSelectedOrigin] = useState<Location | null>(null);
   const [selectedDestination, setSelectedDestination] = useState<Location | null>(null);
+
+  const clearSelectedLocations = useCallback(() => {
+    setSelectedOrigin(null);
+    setSelectedDestination(null);
+  }, []);
 
   const getCurrentLocation = useCallback(async (): Promise<Coordinates | null> => {
     try {
@@ -71,6 +77,7 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
         selectedDestination,
         setSelectedOrigin,
         setSelectedDestination,
+        clearSelectedLocations,
         requestLocationPermission,
         getCurrentLocation
       }}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Alert, Animated, Dimensions, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Alert, Animated, Dimensions, Pressable, PanResponder } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
@@ -33,6 +33,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const winH = Dimensions.get('window').height;
   const sheetCollapsedH = 220;
   const sheetExpandedH = Math.max(560, Math.round(winH * 0.92));
+  const TOP_DRAG_ZONE_HEIGHT = 120;
   const sheetHeight = sheetProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [sheetCollapsedH, sheetExpandedH]
@@ -61,6 +62,74 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       bounciness: 0
     }).start();
   };
+
+  const handlePanResponder = useMemo(
+    () => PanResponder.create({
+      onMoveShouldSetPanResponder: (_evt, gestureState) => {
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onMoveShouldSetPanResponderCapture: (_evt, gestureState) => {
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onPanResponderRelease: (_evt, gestureState) => {
+        if (gestureState.dy < -18) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 18) {
+          collapseSheet();
+        }
+      },
+      onPanResponderTerminate: (_evt, gestureState) => {
+        if (gestureState.dy < -18) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 18) {
+          collapseSheet();
+        }
+      }
+    }),
+    [collapseSheet, expandSheet]
+  );
+
+  const topCardPanResponder = useMemo(
+    () => PanResponder.create({
+      onMoveShouldSetPanResponder: (evt, gestureState) => {
+        const withinTopZone = (evt?.nativeEvent?.locationY ?? Number.MAX_SAFE_INTEGER) <= TOP_DRAG_ZONE_HEIGHT;
+        if (!withinTopZone) return false;
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
+        const withinTopZone = (evt?.nativeEvent?.locationY ?? Number.MAX_SAFE_INTEGER) <= TOP_DRAG_ZONE_HEIGHT;
+        if (!withinTopZone) return false;
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        return vertical && Math.abs(gestureState.dy) > 6;
+      },
+      onPanResponderRelease: (_evt, gestureState) => {
+        if (gestureState.dy < -12) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 12) {
+          collapseSheet();
+        }
+      },
+      onPanResponderTerminate: (_evt, gestureState) => {
+        if (gestureState.dy < -12) {
+          expandSheet();
+          return;
+        }
+        if (gestureState.dy > 12) {
+          collapseSheet();
+        }
+      }
+    }),
+    [collapseSheet, expandSheet]
+  );
 
   const calculateRoute = useCallback(async () => {
     try {
@@ -216,7 +285,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       </View>
 
       {/* Bottom sheet: expands as user scrolls */}
-      <Animated.View style={[styles.sheet, { height: sheetHeight }]}>
+      <Animated.View style={[styles.sheet, { height: sheetHeight }]} {...topCardPanResponder.panHandlers}>
         <Pressable
           style={styles.sheetHandleWrap}
           onPress={() => {
@@ -226,10 +295,11 @@ const PrivateVehicleResultsScreen: React.FC = () => {
               expandSheet();
             }
           }}
+          {...handlePanResponder.panHandlers}
         >
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetHint}>
-            {sheetExpanded ? 'Tap to view the map again' : 'Tap to expand'}
+            {sheetExpanded ? 'Tap or drag down to view the map' : 'Tap or drag up to expand'}
           </Text>
         </Pressable>
 
@@ -240,6 +310,9 @@ const PrivateVehicleResultsScreen: React.FC = () => {
           overScrollMode="never"
           scrollEventThrottle={16}
           onScrollBeginDrag={expandSheet}
+          onTouchStart={() => {
+            if (!sheetExpanded) expandSheet();
+          }}
           onMomentumScrollEnd={(e) => {
             const y = e?.nativeEvent?.contentOffset?.y ?? 0;
             if (y <= 0) collapseSheet();

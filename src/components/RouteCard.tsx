@@ -2,7 +2,7 @@ import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Route, TransportType } from '@/types';
 import { getTransportStyle } from '@/utils/transportUtils';
-import { formatArrivalTimeRange, formatCurrency, formatTimeRange } from '@/utils/helpers';
+import { formatCurrency, formatTimeRange } from '@/utils/helpers';
 import { borderRadius, fontSize, shadows, spacing, type ThemeColors } from '@/utils/theme';
 import { useThemeMode } from '@context/ThemeContext';
 
@@ -11,6 +11,7 @@ interface RouteCardProps {
   isSelected: boolean;
   rank?: number;
   onSelect?: (route: Route) => void;
+  onViewMap?: () => void;
 }
 
 type StepRow = {
@@ -23,7 +24,7 @@ type StepRow = {
   metaRight?: string;
 };
 
-const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect }) => {
+const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect, onViewMap }) => {
   const { colors } = useThemeMode();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -179,20 +180,18 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
         </View>
       )}
 
-      {isSelected && (
-        <View style={styles.transportIcons}>
-          {(route.segments || []).map((segment, index) => {
-            const transportStyle = getTransportStyle(segment.transportType);
-            return (
-              <View key={index} style={styles.iconContainer}>
-                <View style={[styles.transportBadge, { backgroundColor: transportStyle.color }]}>
-                  <Text style={styles.transportIcon}>{transportStyle.icon}</Text>
-                </View>
+      <View style={styles.transportIcons}>
+        {(route.segments || []).map((segment, index) => {
+          const transportStyle = getTransportStyle(segment.transportType);
+          return (
+            <View key={index} style={styles.iconContainer}>
+              <View style={[styles.transportBadge, { backgroundColor: transportStyle.color }]}>
+                <Text style={styles.transportIcon}>{transportStyle.icon}</Text>
               </View>
-            );
-          })}
-        </View>
-      )}
+            </View>
+          );
+        })}
+      </View>
 
       <View style={styles.infoGrid}>
         <View style={styles.infoCell}>
@@ -219,14 +218,27 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, isSelected, rank, onSelect
         </View>
 
         <View style={styles.infoCell}>
-          <Text style={styles.infoLabel}>Arrive (ETA)</Text>
+          <Text style={styles.infoLabel}>Total Distance</Text>
           <Text style={[styles.infoValue, styles.infoValueWrap]} numberOfLines={2}>
-            {formatArrivalTimeRange(route.totalTime)}
+            {`${Number(route.totalDistance || 0).toFixed(1)} km`}
           </Text>
         </View>
       </View>
 
-      {!isSelected && <Text style={styles.tapHintText}>Tap to show modes & steps</Text>}
+      {!isSelected && <Text style={styles.tapHintText}>Tap to select this route</Text>}
+
+      {isSelected && (
+        <View style={styles.mapActionRow}>
+          <Text style={styles.mapActionText}>Route selected. View it on the map above.</Text>
+          <TouchableOpacity
+            style={styles.mapActionButton}
+            onPress={onViewMap}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.mapActionButtonText}>View Map</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {isSelected && (
         <View style={styles.segmentsSection}>
@@ -387,6 +399,31 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: spacing.md,
     fontSize: fontSize.sm
   },
+  mapActionRow: {
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  mapActionText: {
+    flex: 1,
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  mapActionButton: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  mapActionButtonText: {
+    color: colors.textWhite,
+    fontSize: fontSize.sm,
+    fontWeight: '700',
+  },
   segmentsSection: {
     marginTop: spacing.lg
   },
@@ -474,5 +511,6 @@ export default React.memo(RouteCard, (prev, next) => (
   prev.route === next.route &&
   prev.isSelected === next.isSelected &&
   prev.rank === next.rank &&
-  prev.onSelect === next.onSelect
+  prev.onSelect === next.onSelect &&
+  prev.onViewMap === next.onViewMap
 ));
