@@ -73,7 +73,7 @@ const RouteResultsScreen: React.FC = () => {
     outputRange: [sheetCollapsedH, sheetExpandedH]
   });
 
-  const expandSheet = () => {
+  const expandSheet = useCallback(() => {
     if (isExpandedRef.current) return;
     isExpandedRef.current = true;
     setSheetExpanded(true);
@@ -83,9 +83,9 @@ const RouteResultsScreen: React.FC = () => {
       speed: 18,
       bounciness: 0
     }).start();
-  };
+  }, [sheetProgress]);
 
-  const collapseSheet = () => {
+  const collapseSheet = useCallback(() => {
     if (!isExpandedRef.current) return;
     isExpandedRef.current = false;
     setSheetExpanded(false);
@@ -95,7 +95,7 @@ const RouteResultsScreen: React.FC = () => {
       speed: 18,
       bounciness: 0
     }).start();
-  };
+  }, [sheetProgress]);
 
   const handlePanResponder = useMemo(
     () => PanResponder.create({

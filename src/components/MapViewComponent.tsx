@@ -83,6 +83,14 @@ interface MapViewComponentProps {
   boundaryMode?: 'public' | 'private' | 'none';
   /** Hides in-map selection controls (Set Origin/Set Destination/Add Stopover). */
   hideSelectionControls?: boolean;
+  /** Optional step markers (e.g., private turn-by-turn instructions) to render on map. */
+  instructionMarkers?: {
+    coordinate: { latitude: number; longitude: number };
+    stepNumber: number;
+    title: string;
+    subtitle?: string;
+    icon?: string;
+  }[];
 }
 
 const MapViewComponent: React.FC<MapViewComponentProps> = ({
@@ -103,7 +111,8 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   fitBoundsPadding,
   fitBoundsMaxZoom,
   boundaryMode = 'none',
-  hideSelectionControls = false
+  hideSelectionControls = false,
+  instructionMarkers = []
 }) => {
   const { colors, isDark } = useThemeMode();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -421,23 +430,25 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   });
 
   const getTransferMarkers = () => {
-    if (!route || !Array.isArray(route.segments) || route.segments.length < 2) {
-      return [] as {
-        coordinate: { latitude: number; longitude: number };
-        number: number;
-        kind: 'alight' | 'board';
-        fromType: string;
-        toType: string;
-        modeType: string;
-        locationName: string;
-        nextLocationName?: string;
-      }[];
+    type TransferMarker = {
+      id: string;
+      coordinate: { latitude: number; longitude: number };
+      number: number;
+      kind: 'start' | 'alight' | 'board';
+      fromType: string;
+      toType: string;
+      modeType: string;
+      locationName: string;
+      nextLocationName?: string;
+      note?: string;
+    };
+
+    if (!route || !Array.isArray(route.segments) || route.segments.length < 1) {
+      return [] as TransferMarker[];
     }
 
     const segs = route.segments.filter(Boolean);
-    // Identify transfer points as "boardings" into a non-walk segment that is either:
-    // - a different mode than the last non-walk segment, OR
-    // - preceded by a walk connector (re-board) even if same mode.
+
     const transferIndices: number[] = [];
     let lastNonWalkIdx: number | null = null;
     let sawWalkSinceLastNonWalk = false;
@@ -466,35 +477,51 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       sawWalkSinceLastNonWalk = false;
     }
 
-    if (transferIndices.length === 0) {
-      return [] as {
-        coordinate: { latitude: number; longitude: number };
-        number: number;
-        kind: 'alight' | 'board';
-        fromType: string;
-        toType: string;
-        modeType: string;
-        locationName: string;
-        nextLocationName?: string;
-      }[];
-    }
-
-    const markers: {
-      coordinate: { latitude: number; longitude: number };
-      number: number;
-      kind: 'alight' | 'board';
-      fromType: string;
-      toType: string;
-      modeType: string;
-      locationName: string;
-      nextLocationName?: string;
-    }[] = [];
+    const markers: TransferMarker[] = [];
     const seen = new Set<string>();
     let transferNo = 0;
 
+    const firstNonWalkIdx = segs.findIndex((seg) => !isWalkType(seg.transportType));
+    const firstNonWalk = firstNonWalkIdx >= 0 ? segs[firstNonWalkIdx] : null;
+
+    if (isValidCoord(origin?.coordinates)) {
+      const modeLabel = firstNonWalk ? getModeLabel(firstNonWalk.transportType) : 'Walk';
+      markers.push({
+        id: 'start-origin',
+        coordinate: origin.coordinates,
+        number: 0,
+        kind: 'start',
+        fromType: 'walk',
+        toType: firstNonWalk ? normalizeTransportType(firstNonWalk.transportType) : 'walk',
+        modeType: 'walk',
+        locationName: origin.name || 'Starting point',
+        nextLocationName: firstNonWalk?.origin?.name,
+        note: firstNonWalk ? `Walk to this location, then board ${modeLabel}.` : 'Walk to this location.',
+      });
+    }
+
+    if (firstNonWalk) {
+      const firstBoardCoord = getSegmentBoardCoord(firstNonWalk);
+      if (isValidCoord(firstBoardCoord)) {
+        transferNo = 1;
+        const modeLabel = getModeLabel(firstNonWalk.transportType);
+        markers.push({
+          id: 'transfer-1-board-first',
+          coordinate: firstBoardCoord,
+          number: transferNo,
+          kind: 'board',
+          fromType: firstNonWalkIdx > 0 ? 'walk' : normalizeTransportType(firstNonWalk.transportType),
+          toType: normalizeTransportType(firstNonWalk.transportType),
+          modeType: normalizeTransportType(firstNonWalk.transportType),
+          locationName: firstNonWalk.origin?.name || 'Boarding point',
+          nextLocationName: firstNonWalk.destination?.name,
+          note: firstNonWalkIdx > 0 ? `Walk to this location, then board ${modeLabel}.` : `Board ${modeLabel} here.`,
+        });
+      }
+    }
+
     for (const idx of transferIndices) {
       const cur = segs[idx];
-      // find the previous non-walk segment before idx
       let j = idx - 1;
       while (j >= 0 && isWalkType(segs[j].transportType)) j -= 1;
       if (j < 0) continue;
@@ -510,7 +537,6 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
 
       transferNo += 1;
 
-      // If they collapse to the same point (common at stations), offset slightly so labels are visible.
       const alightKey = coordKey(alight);
       const boardKey = coordKey(board);
       const same = alightKey === boardKey;
@@ -523,6 +549,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       seen.add(seenKey);
 
       markers.push({
+        id: `transfer-${transferNo}-alight-${idx}`,
         coordinate: alightCoord,
         number: transferNo,
         kind: 'alight',
@@ -531,8 +558,10 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         modeType: prevType,
         locationName: prev.destination?.name || cur.origin?.name || 'Transfer point',
         nextLocationName: cur.origin?.name || undefined,
+        note: `Alight from ${getModeLabel(prev.transportType)} here.`,
       });
       markers.push({
+        id: `transfer-${transferNo}-board-${idx}`,
         coordinate: boardCoord,
         number: transferNo,
         kind: 'board',
@@ -541,6 +570,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         modeType: curType,
         locationName: cur.origin?.name || prev.destination?.name || 'Transfer point',
         nextLocationName: cur.destination?.name || undefined,
+        note: `Board ${getModeLabel(cur.transportType)} here.`,
       });
     }
 
@@ -582,6 +612,10 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
 
     if (showTransferMarkers && route?.segments?.length) {
       getTransferMarkers().forEach((marker) => pushCoord(marker.coordinate));
+    }
+
+    if (Array.isArray(instructionMarkers) && instructionMarkers.length > 0) {
+      instructionMarkers.forEach((m) => pushCoord(m?.coordinate));
     }
 
     return points;
@@ -663,14 +697,15 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       origin?.coordinates.longitude || destination?.coordinates.longitude || 120.9842
     ];
 
-    let makeTransferIcon: ((n: number, kind: 'alight' | 'board', modeType: string) => any) | null = null;
+    let makeTransferIcon: ((n: number, kind: 'start' | 'alight' | 'board', modeType: string) => any) | null = null;
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const L = require('leaflet');
-      makeTransferIcon = (n: number, kind: 'alight' | 'board', modeType: string) => {
-        const bg = kind === 'alight' ? '#2980b9' : '#27ae60';
-        const label = kind === 'alight' ? 'A' : 'B';
-        const icon = getModeEmoji(modeType);
+      makeTransferIcon = (n: number, kind: 'start' | 'alight' | 'board', modeType: string) => {
+        const bg = kind === 'alight' ? '#2980b9' : kind === 'board' ? '#27ae60' : '#f39c12';
+        const label = kind === 'alight' ? 'A' : kind === 'board' ? 'B' : 'S';
+        const icon = kind === 'start' ? '🚶' : getModeEmoji(modeType);
+        const numText = kind === 'start' ? '' : String(n);
         return L.divIcon({
           className: '',
           html: `
@@ -691,7 +726,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
               line-height: 1;
             ">
               <div style="display:flex; gap:2px; align-items:center; justify-content:center;">
-                <span>${n}</span>
+                <span>${numText}</span>
                 <span style="font-size: 10px;">${icon}</span>
               </div>
               <div style="font-size: 9px; font-weight: 900; margin-top: -1px; opacity: 0.95;">${label}</div>
@@ -703,6 +738,38 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       };
     } catch {
       makeTransferIcon = null;
+    }
+
+    let makeInstructionIcon: ((n: number) => any) | null = null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const L = require('leaflet');
+      makeInstructionIcon = (n: number) => {
+        return L.divIcon({
+          className: '',
+          html: `
+            <div style="
+              width: 24px;
+              height: 24px;
+              border-radius: 12px;
+              background: #f39c12;
+              border: 2px solid #fff;
+              color: #fff;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 11px;
+              font-weight: 800;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+              line-height: 1;
+            ">${n}</div>
+          `,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
+        });
+      };
+    } catch {
+      makeInstructionIcon = null;
     }
 
     let makeEndDotIcon: ((modeType?: string) => any) | null = null;
@@ -828,7 +895,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
             {/* Transfer markers (A=alight, B=board; tap for instructions) */}
             {showTransferMarkers && getTransferMarkers().map((m) => (
               <LeafletMarker
-                key={`transfer-${m.number}-${m.kind}`}
+                key={m.id}
                 position={[m.coordinate.latitude, m.coordinate.longitude]}
                 icon={makeTransferIcon ? makeTransferIcon(m.number, m.kind, m.modeType) : undefined}
               >
@@ -836,19 +903,21 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
                   <Popup>
                     <div style={{ minWidth: 180 }}>
                       <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                        Transfer {m.number} {m.kind === 'alight' ? '(Alight)' : '(Board)'}
+                        {m.kind === 'start' ? 'Start' : `Transfer ${m.number} ${m.kind === 'alight' ? '(Alight)' : '(Board)'}`}
                       </div>
                       <div style={{ marginBottom: 6 }}>
                         Location: {m.locationName}
                       </div>
-                      <div style={{ marginBottom: 6 }}>
-                        {getModeEmoji(m.fromType)} {getModeLabel(m.fromType)} → {getModeEmoji(m.toType)} {getModeLabel(m.toType)}
-                      </div>
-                      <div>
-                        {m.kind === 'alight'
-                          ? `Alight from ${getModeLabel(m.fromType)} here.`
-                          : `Board ${getModeLabel(m.toType)} here.`}
-                      </div>
+                      {m.kind !== 'start' && (
+                        <div style={{ marginBottom: 6 }}>
+                          {getModeEmoji(m.fromType)} {getModeLabel(m.fromType)} → {getModeEmoji(m.toType)} {getModeLabel(m.toType)}
+                        </div>
+                      )}
+                      <div>{m.note || (m.kind === 'alight'
+                        ? `Alight from ${getModeLabel(m.fromType)} here.`
+                        : m.kind === 'board'
+                          ? `Board ${getModeLabel(m.toType)} here.`
+                          : 'Walk to this location.')}</div>
                       {!!m.nextLocationName && (
                         <div style={{ marginTop: 6 }}>
                           {m.kind === 'alight'
@@ -856,6 +925,26 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
                             : `Next stop: ${m.nextLocationName}`}
                         </div>
                       )}
+                    </div>
+                  </Popup>
+                )}
+              </LeafletMarker>
+            ))}
+
+            {Array.isArray(instructionMarkers) && instructionMarkers.map((m) => (
+              <LeafletMarker
+                key={`instruction-${m.stepNumber}-${m.title}`}
+                position={[m.coordinate.latitude, m.coordinate.longitude]}
+                icon={makeInstructionIcon ? makeInstructionIcon(m.stepNumber) : undefined}
+              >
+                {Popup && (
+                  <Popup>
+                    <div style={{ minWidth: 180 }}>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                        Step {m.stepNumber}
+                      </div>
+                      <div style={{ marginBottom: 6 }}>{m.title}</div>
+                      {!!m.subtitle && <div>{m.subtitle}</div>}
                     </div>
                   </Popup>
                 )}
@@ -1093,7 +1182,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   type LeafletMarker = {
     lat: number;
     lon: number;
-    kind: 'origin' | 'destination' | 'stopover' | 'transfer';
+    kind: 'origin' | 'destination' | 'stopover' | 'transfer' | 'instruction';
     label?: string;
     color?: string;
     popupTitle?: string;
@@ -1128,19 +1217,26 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     if (showTransferMarkers) {
       try {
         for (const m of getTransferMarkers()) {
+          const transferLabel = m.kind === 'start' ? 'S' : `${m.number}${m.kind === 'alight' ? 'A' : 'B'}`;
+          const transferColor = m.kind === 'alight' ? '#2980b9' : m.kind === 'board' ? '#27ae60' : '#f39c12';
+          const popupTitle = m.kind === 'start' ? 'Start' : `Transfer ${m.number} ${m.kind === 'alight' ? '(Alight)' : '(Board)'}`;
           markers.push({
             lat: m.coordinate.latitude,
             lon: m.coordinate.longitude,
             kind: 'transfer',
-            label: `${m.number}${m.kind === 'alight' ? 'A' : 'B'}`,
-            color: m.kind === 'alight' ? '#2980b9' : '#27ae60',
-            popupTitle: `Transfer ${m.number} ${m.kind === 'alight' ? '(Alight)' : '(Board)'}`,
+            label: transferLabel,
+            color: transferColor,
+            popupTitle,
             popupLines: [
               `Location: ${m.locationName}`,
-              `${getModeEmoji(m.fromType)} ${getModeLabel(m.fromType)} -> ${getModeEmoji(m.toType)} ${getModeLabel(m.toType)}`,
-              m.kind === 'alight'
+              ...(m.kind !== 'start'
+                ? [`${getModeEmoji(m.fromType)} ${getModeLabel(m.fromType)} -> ${getModeEmoji(m.toType)} ${getModeLabel(m.toType)}`]
+                : []),
+              m.note || (m.kind === 'alight'
                 ? `Alight from ${getModeLabel(m.fromType)} here.`
-                : `Board ${getModeLabel(m.toType)} here.`,
+                : m.kind === 'board'
+                  ? `Board ${getModeLabel(m.toType)} here.`
+                  : 'Walk to this location.'),
               ...(m.nextLocationName
                 ? [m.kind === 'alight' ? `Next board point: ${m.nextLocationName}` : `Next stop: ${m.nextLocationName}`]
                 : []),
@@ -1149,6 +1245,21 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         }
       } catch {
         // best-effort only
+      }
+    }
+
+    if (Array.isArray(instructionMarkers) && instructionMarkers.length > 0) {
+      for (const m of instructionMarkers) {
+        if (!m?.coordinate || !isValidCoord(m.coordinate)) continue;
+        markers.push({
+          lat: m.coordinate.latitude,
+          lon: m.coordinate.longitude,
+          kind: 'instruction',
+          label: `${m.stepNumber}`,
+          color: '#f39c12',
+          popupTitle: `Step ${m.stepNumber}`,
+          popupLines: [m.title, ...(m.subtitle ? [m.subtitle] : [])],
+        });
       }
     }
 
@@ -1315,6 +1426,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     activeBoundaryCoords,
     previewCoords,
     customPolylineConnectors,
+    instructionMarkers,
     effectiveFitPoints,
     colors.accent,
     colors.background,
@@ -1347,6 +1459,21 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         box-shadow: 0 2px 6px rgba(0,0,0,0.35);
         font-size: 11px;
       }
+      .instruction-badge {
+        width: 26px;
+        height: 26px;
+        border-radius: 13px;
+        border: 2px solid #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 800;
+        font-family: -apple-system, system-ui, Segoe UI, Roboto, Helvetica, Arial;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+        font-size: 11px;
+        background: #f39c12;
+      }
     </style>
   </head>
   <body>
@@ -1373,12 +1500,13 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
           return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
-        if (m.kind === 'transfer' && m.label) {
+        if ((m.kind === 'transfer' || m.kind === 'instruction') && m.label) {
+          const badgeClass = m.kind === 'instruction' ? 'instruction-badge' : 'transfer-badge';
           const icon = L.divIcon({
             className: '',
             html:
-              '<div class="transfer-badge" style="background:' +
-              (m.color || '#2980b9') +
+              '<div class="' + badgeClass + '" style="background:' +
+              (m.color || (m.kind === 'instruction' ? '#f39c12' : '#2980b9')) +
               ';">' +
               (m.label || '') +
               '</div>',

@@ -294,6 +294,7 @@ const PublicTransportScreen: React.FC = () => {
         )}
 
         <Text style={[styles.inputLabel, { marginTop: 12 }]}>Preferred Modes</Text>
+        <Text style={styles.modesNote}>Note: Modes are selected by default. Deselect any mode you do not want to include.</Text>
         <View style={styles.modesRow}>
           {['walk','jeepney','bus','lrt','mrt','pnr'].map((m) => {
             const active = preferredModes.includes(m);
@@ -473,6 +474,7 @@ const PublicTransportScreen: React.FC = () => {
         )}
 
         <Text style={[styles.inputLabel, { marginTop: 12 }]}>Preferred Modes</Text>
+        <Text style={styles.modesNote}>Note: Modes are selected by default. Deselect any mode you do not want to include.</Text>
         <View style={styles.modesRow}>
           {['walk','jeepney','bus','lrt','mrt','pnr'].map((m) => {
             const active = preferredModes.includes(m);
@@ -647,6 +649,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     marginBottom: spacing.sm
+  },
+  modesNote: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
   },
   input: {
     backgroundColor: colors.gray7,

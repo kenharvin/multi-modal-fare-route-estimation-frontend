@@ -8,6 +8,7 @@ import { useApp } from '@context/AppContext';
 import { Button } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { calculatePrivateVehicleRoute } from '@services/api';
+import { reverseGeocodePoi } from '@services/api';
 import MapViewComponent from '@components/MapViewComponent';
 import LogoLoadingScreen from '@components/LogoLoadingScreen';
 import { formatArrivalTimeRange, formatTimeRange } from '@/utils/helpers';
@@ -21,6 +22,7 @@ type DirectionStep = {
   icon: string;
   instruction: string;
   distanceText?: string;
+  turnPoint?: { latitude: number; longitude: number };
 };
 
 const PrivateVehicleResultsScreen: React.FC = () => {
@@ -34,6 +36,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   
   const [routeResult, setRouteResult] = useState<PrivateVehicleRoute | null>(null);
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
+  const [turnPointNames, setTurnPointNames] = useState<Record<string, string>>({});
 
   const sheetProgress = useRef(new Animated.Value(0)).current; // 0=collapsed, 1=expanded
   const isExpandedRef = useRef<boolean>(false);
@@ -46,7 +49,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     outputRange: [sheetCollapsedH, sheetExpandedH]
   });
 
-  const expandSheet = () => {
+  const expandSheet = useCallback(() => {
     if (isExpandedRef.current) return;
     isExpandedRef.current = true;
     setSheetExpanded(true);
@@ -56,9 +59,9 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       speed: 18,
       bounciness: 0
     }).start();
-  };
+  }, [sheetProgress]);
 
-  const collapseSheet = () => {
+  const collapseSheet = useCallback(() => {
     if (!isExpandedRef.current) return;
     isExpandedRef.current = false;
     setSheetExpanded(false);
@@ -68,7 +71,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       speed: 18,
       bounciness: 0
     }).start();
-  };
+  }, [sheetProgress]);
 
   const handlePanResponder = useMemo(
     () => PanResponder.create({
@@ -181,30 +184,10 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     );
   };
 
-  if (isLoading) {
-    return <LogoLoadingScreen message="Calculating route and fuel cost" />;
-  }
-
-  if (!routeResult) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Text>SEARCH</Text>
-        <Text style={styles.emptyTitle}>No Route Found</Text>
-        <Button
-          mode="contained"
-          onPress={() => navigation.goBack()}
-          style={styles.retryButton}
-        >
-          Try Again
-        </Button>
-      </View>
-    );
-  }
-
-  const isMock = routeResult.source === 'mock';
+  const isMock = routeResult?.source === 'mock';
 
   const legColors = ['#1e88e5', '#8e24aa', '#43a047', '#fb8c00'];
-  const legs = Array.isArray(routeResult.legs) ? routeResult.legs : [];
+  const legs = Array.isArray(routeResult?.legs) ? routeResult.legs : [];
   const hasLegBreakdown = legs.length >= 2;
 
   const isValidCoord = (c: any): c is { latitude: number; longitude: number } => {
@@ -274,96 +257,116 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     return distanceKm / (timeMin / 60);
   };
 
-  const formatDistance = (meters: number) => {
-    if (!Number.isFinite(meters) || meters <= 0) return '0 m';
-    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
-    return `${Math.round(meters / 10) * 10} m`;
-  };
+  const directionSteps = useMemo(() => {
+    if (!routeResult) return [] as DirectionStep[];
 
-  const bearingDeg = (a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) => {
-    const toRad = (x: number) => (x * Math.PI) / 180;
-    const toDeg = (x: number) => (x * 180) / Math.PI;
+    const formatDistance = (meters: number) => {
+      if (!Number.isFinite(meters) || meters <= 0) return '0 m';
+      if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+      return `${Math.round(meters / 10) * 10} m`;
+    };
 
-    const lat1 = toRad(a.latitude);
-    const lat2 = toRad(b.latitude);
-    const dLon = toRad(b.longitude - a.longitude);
+    const isValidPoint = (c: any): c is { latitude: number; longitude: number } => {
+      const lat = c?.latitude;
+      const lon = c?.longitude;
+      return (
+        typeof lat === 'number' &&
+        typeof lon === 'number' &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lon) &&
+        lat >= -90 &&
+        lat <= 90 &&
+        lon >= -180 &&
+        lon <= 180
+      );
+    };
 
-    const y = Math.sin(dLon) * Math.cos(lat2);
-    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-    return (toDeg(Math.atan2(y, x)) + 360) % 360;
-  };
+    const bearingDeg = (a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) => {
+      const toRad = (x: number) => (x * Math.PI) / 180;
+      const toDeg = (x: number) => (x * 180) / Math.PI;
 
-  const normalizeTurnDelta = (nextBearing: number, prevBearing: number) => {
-    let delta = nextBearing - prevBearing;
-    while (delta > 180) delta -= 360;
-    while (delta < -180) delta += 360;
-    return delta;
-  };
+      const lat1 = toRad(a.latitude);
+      const lat2 = toRad(b.latitude);
+      const dLon = toRad(b.longitude - a.longitude);
 
-  const classifyTurn = (delta: number): { icon: string; text: string } | null => {
-    const absDelta = Math.abs(delta);
-    if (absDelta < 30) return null;
-    if (absDelta >= 165) return { icon: 'backup-restore', text: 'Make a U-turn' };
-    if (delta > 0) {
-      if (absDelta < 60) return { icon: 'arrow-top-right', text: 'Turn slight right' };
-      if (absDelta < 120) return { icon: 'arrow-right-bold', text: 'Turn right' };
-      return { icon: 'arrow-bottom-right', text: 'Turn sharp right' };
-    }
-    if (absDelta < 60) return { icon: 'arrow-top-left', text: 'Turn slight left' };
-    if (absDelta < 120) return { icon: 'arrow-left-bold', text: 'Turn left' };
-    return { icon: 'arrow-bottom-left', text: 'Turn sharp left' };
-  };
+      const y = Math.sin(dLon) * Math.cos(lat2);
+      const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    };
 
-  const buildLegDirectionSteps = (
-    coords: { latitude: number; longitude: number }[],
-    destinationName: string,
-    legLabel: string,
-  ): DirectionStep[] => {
-    if (!Array.isArray(coords) || coords.length < 2) {
-      return [];
-    }
+    const normalizeTurnDelta = (nextBearing: number, prevBearing: number) => {
+      let delta = nextBearing - prevBearing;
+      while (delta > 180) delta -= 360;
+      while (delta < -180) delta += 360;
+      return delta;
+    };
 
-    const steps: DirectionStep[] = [];
-    steps.push({
-      id: `${legLabel}-start`,
-      icon: 'navigation-variant',
-      instruction: `${legLabel}: Head toward ${destinationName}`,
-    });
+    const classifyTurn = (delta: number): { icon: string; text: string } | null => {
+      const absDelta = Math.abs(delta);
+      if (absDelta < 30) return null;
+      if (absDelta >= 165) return { icon: 'backup-restore', text: 'Make a U-turn' };
+      if (delta > 0) {
+        if (absDelta < 60) return { icon: 'arrow-top-right', text: 'Turn slight right' };
+        if (absDelta < 120) return { icon: 'arrow-right-bold', text: 'Turn right' };
+        return { icon: 'arrow-bottom-right', text: 'Turn sharp right' };
+      }
+      if (absDelta < 60) return { icon: 'arrow-top-left', text: 'Turn slight left' };
+      if (absDelta < 120) return { icon: 'arrow-left-bold', text: 'Turn left' };
+      return { icon: 'arrow-bottom-left', text: 'Turn sharp left' };
+    };
 
-    let sinceLastTurnM = 0;
-    for (let i = 1; i < coords.length - 1; i++) {
-      const segDist = haversineM(coords[i - 1], coords[i]);
-      sinceLastTurnM += segDist;
-
-      const prevBearing = bearingDeg(coords[i - 1], coords[i]);
-      const nextBearing = bearingDeg(coords[i], coords[i + 1]);
-      const turnDelta = normalizeTurnDelta(nextBearing, prevBearing);
-      const maneuver = classifyTurn(turnDelta);
-      if (!maneuver || sinceLastTurnM < 80) {
-        continue;
+    const buildLegDirectionSteps = (
+      coords: { latitude: number; longitude: number }[],
+      destinationName: string,
+      legLabel: string,
+    ): DirectionStep[] => {
+      if (!Array.isArray(coords) || coords.length < 2) {
+        return [];
       }
 
+      const steps: DirectionStep[] = [];
       steps.push({
-        id: `${legLabel}-turn-${i}`,
-        icon: maneuver.icon,
-        instruction: `${maneuver.text}`,
-        distanceText: `In ${formatDistance(sinceLastTurnM)}`,
+        id: `${legLabel}-start`,
+        icon: 'navigation-variant',
+        instruction: `${legLabel}: Head toward ${destinationName}`,
+        turnPoint: coords[0],
       });
-      sinceLastTurnM = 0;
-    }
 
-    sinceLastTurnM += haversineM(coords[coords.length - 2], coords[coords.length - 1]);
-    steps.push({
-      id: `${legLabel}-arrive`,
-      icon: 'flag-checkered',
-      instruction: `Arrive at ${destinationName}`,
-      distanceText: sinceLastTurnM > 0 ? `In ${formatDistance(sinceLastTurnM)}` : undefined,
-    });
+      let sinceLastTurnM = 0;
+      for (let i = 1; i < coords.length - 1; i++) {
+        const segDist = haversineM(coords[i - 1], coords[i]);
+        sinceLastTurnM += segDist;
 
-    return steps;
-  };
+        const prevBearing = bearingDeg(coords[i - 1], coords[i]);
+        const nextBearing = bearingDeg(coords[i], coords[i + 1]);
+        const turnDelta = normalizeTurnDelta(nextBearing, prevBearing);
+        const maneuver = classifyTurn(turnDelta);
+        if (!maneuver || sinceLastTurnM < 80) {
+          continue;
+        }
 
-  const directionSteps = useMemo(() => {
+        steps.push({
+          id: `${legLabel}-turn-${i}`,
+          icon: maneuver.icon,
+          instruction: `${maneuver.text} toward ${destinationName}`,
+          distanceText: `In ${formatDistance(sinceLastTurnM)}`,
+          turnPoint: coords[i],
+        });
+        sinceLastTurnM = 0;
+      }
+
+      sinceLastTurnM += haversineM(coords[coords.length - 2], coords[coords.length - 1]);
+      steps.push({
+        id: `${legLabel}-arrive`,
+        icon: 'flag-checkered',
+        instruction: `Arrive at ${destinationName}`,
+        distanceText: sinceLastTurnM > 0 ? `In ${formatDistance(sinceLastTurnM)}` : undefined,
+        turnPoint: coords[coords.length - 1],
+      });
+
+      return steps;
+    };
+
     const steps: DirectionStep[] = [];
     const legsToUse = Array.isArray(routeResult.legs) && routeResult.legs.length > 0
       ? routeResult.legs
@@ -377,8 +380,8 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         ];
 
     legsToUse.forEach((leg, index) => {
-      const coordsFromGeometry = Array.isArray(leg.geometry) ? leg.geometry.filter(isValidCoord) : [];
-      const fallbackCoords = [leg.origin?.coordinates, leg.destination?.coordinates].filter(isValidCoord);
+      const coordsFromGeometry = Array.isArray(leg.geometry) ? leg.geometry.filter(isValidPoint) : [];
+      const fallbackCoords = [leg.origin?.coordinates, leg.destination?.coordinates].filter(isValidPoint);
       const coords = coordsFromGeometry.length >= 2 ? coordsFromGeometry : fallbackCoords;
 
       const destinationName = leg.destination?.name || (index === legsToUse.length - 1 ? 'Destination' : `Stopover ${index + 1}`);
@@ -387,7 +390,89 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     });
 
     return steps;
-  }, [buildLegDirectionSteps, isValidCoord, routeResult.destination, routeResult.geometry, routeResult.legs, routeResult.origin]);
+  }, [routeResult]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTurnPointNames = async () => {
+      const pending = directionSteps.filter(
+        (step) =>
+          !!step.turnPoint &&
+          !turnPointNames[step.id],
+      );
+      if (pending.length === 0) return;
+
+      const updates: Record<string, string> = {};
+      for (const step of pending.slice(0, 16)) {
+        if (!step.turnPoint) continue;
+        try {
+          const resolved = await reverseGeocodePoi(step.turnPoint.latitude, step.turnPoint.longitude);
+          const label = String(resolved?.name || resolved?.address || '').trim();
+          if (label) {
+            updates[step.id] = label;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      if (!cancelled && Object.keys(updates).length > 0) {
+        setTurnPointNames((prev) => ({ ...prev, ...updates }));
+      }
+    };
+
+    void loadTurnPointNames();
+    return () => {
+      cancelled = true;
+    };
+  }, [directionSteps, turnPointNames]);
+
+  const directionStepsWithLocationNames = useMemo(
+    () =>
+      directionSteps.map((step) => {
+        const turnName = turnPointNames[step.id];
+        if (!turnName) return step;
+        return {
+          ...step,
+          instruction: `${step.instruction} near ${turnName}`,
+        };
+      }),
+    [directionSteps, turnPointNames],
+  );
+
+  const instructionMarkers = useMemo(() => {
+    return directionStepsWithLocationNames
+      .filter((step) => !!step.turnPoint)
+      .slice(0, 24)
+      .map((step, index) => ({
+        coordinate: step.turnPoint as { latitude: number; longitude: number },
+        stepNumber: index + 1,
+        title: step.instruction,
+        subtitle: step.distanceText,
+        icon: step.icon,
+      }));
+  }, [directionStepsWithLocationNames]);
+
+  if (isLoading) {
+    return <LogoLoadingScreen message="Calculating route and fuel cost" />;
+  }
+
+  if (!routeResult) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Text>SEARCH</Text>
+        <Text style={styles.emptyTitle}>No Route Found</Text>
+        <Button
+          mode="contained"
+          onPress={() => navigation.goBack()}
+          style={styles.retryButton}
+        >
+          Try Again
+        </Button>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -399,6 +484,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
           stopovers={routeResult.stopovers}
           polylines={legPolylines}
           polylineCoords={!legPolylines ? routeResult.geometry : null}
+          instructionMarkers={instructionMarkers}
           showRoute={true}
           boundaryMode="private"
           fitBoundsPadding={{ top: 64, right: 64, bottom: 520, left: 64 }}
@@ -610,8 +696,8 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       <View style={styles.routeCard}>
         <Text style={styles.routeTitle}>Turn-by-turn Directions</Text>
 
-        {directionSteps.length > 0 ? (
-          directionSteps.map((step) => (
+        {directionStepsWithLocationNames.length > 0 ? (
+          directionStepsWithLocationNames.map((step) => (
             <View key={step.id} style={styles.directionRow}>
               <View style={styles.directionIconWrap}>
                 <MaterialCommunityIcons name={step.icon as any} size={18} color={colors.primary} />
