@@ -429,6 +429,8 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         fromType: string;
         toType: string;
         modeType: string;
+        locationName: string;
+        nextLocationName?: string;
       }[];
     }
 
@@ -472,6 +474,8 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         fromType: string;
         toType: string;
         modeType: string;
+        locationName: string;
+        nextLocationName?: string;
       }[];
     }
 
@@ -482,6 +486,8 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       fromType: string;
       toType: string;
       modeType: string;
+      locationName: string;
+      nextLocationName?: string;
     }[] = [];
     const seen = new Set<string>();
     let transferNo = 0;
@@ -522,7 +528,9 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         kind: 'alight',
         fromType: prevType,
         toType: curType,
-        modeType: prevType
+        modeType: prevType,
+        locationName: prev.destination?.name || cur.origin?.name || 'Transfer point',
+        nextLocationName: cur.origin?.name || undefined,
       });
       markers.push({
         coordinate: boardCoord,
@@ -530,7 +538,9 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         kind: 'board',
         fromType: prevType,
         toType: curType,
-        modeType: curType
+        modeType: curType,
+        locationName: cur.origin?.name || prev.destination?.name || 'Transfer point',
+        nextLocationName: cur.destination?.name || undefined,
       });
     }
 
@@ -829,6 +839,9 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
                         Transfer {m.number} {m.kind === 'alight' ? '(Alight)' : '(Board)'}
                       </div>
                       <div style={{ marginBottom: 6 }}>
+                        Location: {m.locationName}
+                      </div>
+                      <div style={{ marginBottom: 6 }}>
                         {getModeEmoji(m.fromType)} {getModeLabel(m.fromType)} → {getModeEmoji(m.toType)} {getModeLabel(m.toType)}
                       </div>
                       <div>
@@ -836,6 +849,13 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
                           ? `Alight from ${getModeLabel(m.fromType)} here.`
                           : `Board ${getModeLabel(m.toType)} here.`}
                       </div>
+                      {!!m.nextLocationName && (
+                        <div style={{ marginTop: 6 }}>
+                          {m.kind === 'alight'
+                            ? `Next board point: ${m.nextLocationName}`
+                            : `Next stop: ${m.nextLocationName}`}
+                        </div>
+                      )}
                     </div>
                   </Popup>
                 )}
@@ -1070,7 +1090,15 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
 
   type LeafletPolyline = { coords: [number, number][]; color: string; weight: number; dashArray?: string };
   type LeafletPolygon = { coords: [number, number][]; color: string; fillColor: string; fillOpacity: number; weight: number; dashArray?: string };
-  type LeafletMarker = { lat: number; lon: number; kind: 'origin' | 'destination' | 'stopover' | 'transfer'; label?: string; color?: string };
+  type LeafletMarker = {
+    lat: number;
+    lon: number;
+    kind: 'origin' | 'destination' | 'stopover' | 'transfer';
+    label?: string;
+    color?: string;
+    popupTitle?: string;
+    popupLines?: string[];
+  };
 
   const nativeLeafletPayload = useMemo(() => {
     const markers: LeafletMarker[] = [];
@@ -1105,7 +1133,18 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
             lon: m.coordinate.longitude,
             kind: 'transfer',
             label: `${m.number}${m.kind === 'alight' ? 'A' : 'B'}`,
-            color: m.kind === 'alight' ? '#2980b9' : '#27ae60'
+            color: m.kind === 'alight' ? '#2980b9' : '#27ae60',
+            popupTitle: `Transfer ${m.number} ${m.kind === 'alight' ? '(Alight)' : '(Board)'}`,
+            popupLines: [
+              `Location: ${m.locationName}`,
+              `${getModeEmoji(m.fromType)} ${getModeLabel(m.fromType)} -> ${getModeEmoji(m.toType)} ${getModeLabel(m.toType)}`,
+              m.kind === 'alight'
+                ? `Alight from ${getModeLabel(m.fromType)} here.`
+                : `Board ${getModeLabel(m.toType)} here.`,
+              ...(m.nextLocationName
+                ? [m.kind === 'alight' ? `Next board point: ${m.nextLocationName}` : `Next stop: ${m.nextLocationName}`]
+                : []),
+            ],
           });
         }
       } catch {
@@ -1330,6 +1369,10 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       }
 
       function addMarker(m) {
+        function esc(v) {
+          return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
         if (m.kind === 'transfer' && m.label) {
           const icon = L.divIcon({
             className: '',
@@ -1342,7 +1385,14 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
             iconSize: [26, 26],
             iconAnchor: [13, 13]
           });
-          L.marker([m.lat, m.lon], { icon }).addTo(layer);
+          const marker = L.marker([m.lat, m.lon], { icon }).addTo(layer);
+          if (m.popupTitle || (Array.isArray(m.popupLines) && m.popupLines.length > 0)) {
+            const title = m.popupTitle ? '<div style="font-weight:700;margin-bottom:6px;">' + esc(m.popupTitle) + '</div>' : '';
+            const lines = (Array.isArray(m.popupLines) ? m.popupLines : [])
+              .map((line) => '<div style="margin-bottom:4px;">' + esc(line) + '</div>')
+              .join('');
+            marker.bindPopup('<div style="min-width:180px;">' + title + lines + '</div>');
+          }
           return;
         }
 

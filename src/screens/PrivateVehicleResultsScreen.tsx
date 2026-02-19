@@ -16,6 +16,13 @@ import { useThemeMode } from '@context/ThemeContext';
 type PrivateVehicleResultsRouteProp = RouteProp<RootStackParamList, 'PrivateVehicleResults'>;
 type PrivateVehicleResultsNavigationProp = StackNavigationProp<RootStackParamList, 'PrivateVehicleResults'>;
 
+type DirectionStep = {
+  id: string;
+  icon: string;
+  instruction: string;
+  distanceText?: string;
+};
+
 const PrivateVehicleResultsScreen: React.FC = () => {
   const { colors } = useThemeMode();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -267,6 +274,121 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     return distanceKm / (timeMin / 60);
   };
 
+  const formatDistance = (meters: number) => {
+    if (!Number.isFinite(meters) || meters <= 0) return '0 m';
+    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+    return `${Math.round(meters / 10) * 10} m`;
+  };
+
+  const bearingDeg = (a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) => {
+    const toRad = (x: number) => (x * Math.PI) / 180;
+    const toDeg = (x: number) => (x * 180) / Math.PI;
+
+    const lat1 = toRad(a.latitude);
+    const lat2 = toRad(b.latitude);
+    const dLon = toRad(b.longitude - a.longitude);
+
+    const y = Math.sin(dLon) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+    return (toDeg(Math.atan2(y, x)) + 360) % 360;
+  };
+
+  const normalizeTurnDelta = (nextBearing: number, prevBearing: number) => {
+    let delta = nextBearing - prevBearing;
+    while (delta > 180) delta -= 360;
+    while (delta < -180) delta += 360;
+    return delta;
+  };
+
+  const classifyTurn = (delta: number): { icon: string; text: string } | null => {
+    const absDelta = Math.abs(delta);
+    if (absDelta < 30) return null;
+    if (absDelta >= 165) return { icon: 'backup-restore', text: 'Make a U-turn' };
+    if (delta > 0) {
+      if (absDelta < 60) return { icon: 'arrow-top-right', text: 'Turn slight right' };
+      if (absDelta < 120) return { icon: 'arrow-right-bold', text: 'Turn right' };
+      return { icon: 'arrow-bottom-right', text: 'Turn sharp right' };
+    }
+    if (absDelta < 60) return { icon: 'arrow-top-left', text: 'Turn slight left' };
+    if (absDelta < 120) return { icon: 'arrow-left-bold', text: 'Turn left' };
+    return { icon: 'arrow-bottom-left', text: 'Turn sharp left' };
+  };
+
+  const buildLegDirectionSteps = (
+    coords: { latitude: number; longitude: number }[],
+    destinationName: string,
+    legLabel: string,
+  ): DirectionStep[] => {
+    if (!Array.isArray(coords) || coords.length < 2) {
+      return [];
+    }
+
+    const steps: DirectionStep[] = [];
+    steps.push({
+      id: `${legLabel}-start`,
+      icon: 'navigation-variant',
+      instruction: `${legLabel}: Head toward ${destinationName}`,
+    });
+
+    let sinceLastTurnM = 0;
+    for (let i = 1; i < coords.length - 1; i++) {
+      const segDist = haversineM(coords[i - 1], coords[i]);
+      sinceLastTurnM += segDist;
+
+      const prevBearing = bearingDeg(coords[i - 1], coords[i]);
+      const nextBearing = bearingDeg(coords[i], coords[i + 1]);
+      const turnDelta = normalizeTurnDelta(nextBearing, prevBearing);
+      const maneuver = classifyTurn(turnDelta);
+      if (!maneuver || sinceLastTurnM < 80) {
+        continue;
+      }
+
+      steps.push({
+        id: `${legLabel}-turn-${i}`,
+        icon: maneuver.icon,
+        instruction: `${maneuver.text}`,
+        distanceText: `In ${formatDistance(sinceLastTurnM)}`,
+      });
+      sinceLastTurnM = 0;
+    }
+
+    sinceLastTurnM += haversineM(coords[coords.length - 2], coords[coords.length - 1]);
+    steps.push({
+      id: `${legLabel}-arrive`,
+      icon: 'flag-checkered',
+      instruction: `Arrive at ${destinationName}`,
+      distanceText: sinceLastTurnM > 0 ? `In ${formatDistance(sinceLastTurnM)}` : undefined,
+    });
+
+    return steps;
+  };
+
+  const directionSteps = useMemo(() => {
+    const steps: DirectionStep[] = [];
+    const legsToUse = Array.isArray(routeResult.legs) && routeResult.legs.length > 0
+      ? routeResult.legs
+      : [
+          {
+            id: 'route-main',
+            origin: routeResult.origin,
+            destination: routeResult.destination,
+            geometry: routeResult.geometry,
+          },
+        ];
+
+    legsToUse.forEach((leg, index) => {
+      const coordsFromGeometry = Array.isArray(leg.geometry) ? leg.geometry.filter(isValidCoord) : [];
+      const fallbackCoords = [leg.origin?.coordinates, leg.destination?.coordinates].filter(isValidCoord);
+      const coords = coordsFromGeometry.length >= 2 ? coordsFromGeometry : fallbackCoords;
+
+      const destinationName = leg.destination?.name || (index === legsToUse.length - 1 ? 'Destination' : `Stopover ${index + 1}`);
+      const legLabel = legsToUse.length > 1 ? `Leg ${index + 1}` : 'Route';
+      steps.push(...buildLegDirectionSteps(coords, destinationName, legLabel));
+    });
+
+    return steps;
+  }, [buildLegDirectionSteps, isValidCoord, routeResult.destination, routeResult.geometry, routeResult.legs, routeResult.origin]);
+
   return (
     <View style={styles.container}>
       {/* Map as full-screen background */}
@@ -483,6 +605,26 @@ const PrivateVehicleResultsScreen: React.FC = () => {
             <Text style={styles.locationName}>{routeResult.destination.name}</Text>
           </View>
         </View>
+      </View>
+
+      <View style={styles.routeCard}>
+        <Text style={styles.routeTitle}>Turn-by-turn Directions</Text>
+
+        {directionSteps.length > 0 ? (
+          directionSteps.map((step) => (
+            <View key={step.id} style={styles.directionRow}>
+              <View style={styles.directionIconWrap}>
+                <MaterialCommunityIcons name={step.icon as any} size={18} color={colors.primary} />
+              </View>
+              <View style={styles.directionTextWrap}>
+                {step.distanceText ? <Text style={styles.directionDistance}>{step.distanceText}</Text> : null}
+                <Text style={styles.directionInstruction}>{step.instruction}</Text>
+              </View>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.directionFallbackText}>Directions will appear once route geometry is available.</Text>
+        )}
       </View>
 
       {routeResult.fuzzyScore && (
@@ -793,6 +935,38 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     textTransform: 'capitalize'
+  },
+  directionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
+  },
+  directionIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: borderRadius.round,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  directionTextWrap: {
+    flex: 1,
+    marginLeft: spacing.md,
+  },
+  directionDistance: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  directionInstruction: {
+    fontSize: fontSize.md,
+    color: colors.textPrimary,
+    fontWeight: '500',
+  },
+  directionFallbackText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
   },
   scoreCard: {
     backgroundColor: colors.white,
