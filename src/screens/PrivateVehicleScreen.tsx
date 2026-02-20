@@ -398,6 +398,7 @@ const PrivateVehicleScreen: React.FC = () => {
           pinColor="#e74c3c"
         />
 
+        <Text style={styles.sectionTitle}>Driving Preference</Text>
         {stopoverLocations.length < MAX_STOPOVERS && (
           <Button
             mode="outlined"
@@ -410,16 +411,28 @@ const PrivateVehicleScreen: React.FC = () => {
         )}
 
         {stopoverLocations.map((location, index) => (
-          <DestinationInput
-            key={`stopover-input-${index}`}
-            label={`Stopover ${index + 1} (Optional)`}
-            value={location}
-            onValueChange={(value) => handleStopoverChange(index, value)}
-            placeholder="Search stopover"
-            searchProvider={(q) => searchPois(q, 10, currentLocation)}
-            onPinPress={() => handleRequestStopoverPickFromMap(index)}
-            pinColor="#2980b9"
-          />
+          <View key={`stopover-row-${index}`} style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ flex: 1 }}>
+              <DestinationInput
+                label={`Stopover ${index + 1} (Optional)`}
+                value={location}
+                onValueChange={(value) => handleStopoverChange(index, value)}
+                placeholder="Search stopover"
+                searchProvider={(q) => searchPois(q, 10, currentLocation)}
+                onPinPress={() => handleRequestStopoverPickFromMap(index)}
+                pinColor="#2980b9"
+              />
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                setStopoverLocations((prev) => prev.filter((_, i) => i !== index));
+              }}
+              style={{ marginLeft: 8, padding: 4 }}
+              accessibilityLabel={`Remove stopover ${index + 1}`}
+            >
+              <MaterialCommunityIcons name="trash-can-outline" size={28} color="#e74c3c" />
+            </TouchableOpacity>
+          </View>
         ))}
       </>
     );
@@ -558,18 +571,14 @@ const PrivateVehicleScreen: React.FC = () => {
 
             <View style={styles.sheetDivider} />
             <View style={styles.sheetSection}>
-              <Text style={styles.sectionTitle}>Driving Preferences</Text>
+              
 
               <View style={styles.preferenceRow}>
                 <View style={styles.preferenceInfo}>
                   <MaterialCommunityIcons name="map-marker-distance" size={18} color={colors.textSecondary} />
-                  <Text style={styles.preferenceText}>Prefer Shortest Distance</Text>
+                  <Text style={styles.preferenceText}>Prefer Shortest Distance (Default)</Text>
                 </View>
-                <Switch
-                  value={preferences.preferShortest}
-                  onValueChange={(value) => setPreferences({ ...preferences, preferShortest: value })}
-                  color={colors.primary}
-                />
+                
               </View>
             </View>
 
@@ -650,13 +659,25 @@ const PrivateVehicleScreen: React.FC = () => {
           <View style={styles.fuelTypeRow}>
             {fuelPriceOptions.map((option) => {
               const active = selectedFuelType === option.fuel_type;
+              const isDiesel = option.fuel_type === 'diesel';
+              const isMotorcycle = vehicle.category === VehicleCategory.MOTORCYCLE;
+              const disabled = isDiesel && isMotorcycle;
               return (
                 <TouchableOpacity
                   key={option.fuel_type}
-                  style={[styles.fuelTypeButton, active && styles.fuelTypeButtonActive]}
-                  onPress={() => handleFuelTypeChange(option.fuel_type)}
+                  style={[
+                    styles.fuelTypeButton,
+                    active && styles.fuelTypeButtonActive,
+                    disabled && { opacity: 0.4 }
+                  ]}
+                  onPress={() => !disabled && handleFuelTypeChange(option.fuel_type)}
+                  disabled={disabled}
                 >
-                  <Text style={[styles.fuelTypeText, active && styles.fuelTypeTextActive]}>
+                  <Text style={[
+                    styles.fuelTypeText,
+                    active && styles.fuelTypeTextActive,
+                    disabled && { textDecorationLine: 'line-through', color: '#aaa' }
+                  ]}>
                     {FUEL_TYPE_LABELS[option.fuel_type] || option.fuel_type}
                   </Text>
                 </TouchableOpacity>
@@ -689,20 +710,14 @@ const PrivateVehicleScreen: React.FC = () => {
         </View>
       </View>
 
+      {/* Shortest Distance (Default) label before Add Stopover */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Driving Preferences</Text>
-
-        <View style={styles.preferenceRow}>
+        
           <View style={styles.preferenceInfo}>
             <MaterialCommunityIcons name="map-marker-distance" size={18} color={colors.textSecondary} />
-            <Text style={styles.preferenceText}>Prefer Shortest Distance</Text>
+            <Text style={styles.preferenceText}>Shortest Distance (Default)</Text>
           </View>
-          <Switch
-            value={preferences.preferShortest}
-            onValueChange={(value) => setPreferences({ ...preferences, preferShortest: value })}
-            color={colors.primary}
-          />
-        </View>
+        
       </View>
 
       <View style={styles.footer}>

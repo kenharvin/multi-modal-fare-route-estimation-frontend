@@ -328,7 +328,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       steps.push({
         id: `${legLabel}-start`,
         icon: 'navigation-variant',
-        instruction: `${legLabel}: Head toward ${destinationName}`,
+        instruction: `${legLabel}: Start on ${destinationName}`,
         turnPoint: coords[0],
       });
 
@@ -345,11 +345,21 @@ const PrivateVehicleResultsScreen: React.FC = () => {
           continue;
         }
 
+        // Use the street name at the next turn point for clarity
+        let nextStreetName = undefined;
+        if (turnPointNames) {
+          const nextCoord = coords[i + 1];
+          if (nextCoord) {
+            nextStreetName = turnPointNames[`${nextCoord.latitude},${nextCoord.longitude}`];
+          }
+        }
         steps.push({
           id: `${legLabel}-turn-${i}`,
           icon: maneuver.icon,
-          instruction: `${maneuver.text} toward ${destinationName}`,
-          distanceText: `In ${formatDistance(sinceLastTurnM)}`,
+          instruction: nextStreetName
+            ? `${maneuver.text.replace('Turn', 'Turn')} onto ${nextStreetName}`
+            : `${maneuver.text}`,
+          distanceText: `After ${formatDistance(sinceLastTurnM)}`,
           turnPoint: coords[i],
         });
         sinceLastTurnM = 0;
@@ -390,7 +400,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     });
 
     return steps;
-  }, [routeResult]);
+  }, [routeResult, turnPointNames]);
 
   useEffect(() => {
     let cancelled = false;
@@ -430,13 +440,25 @@ const PrivateVehicleResultsScreen: React.FC = () => {
 
   const directionStepsWithLocationNames = useMemo(
     () =>
-      directionSteps.map((step) => {
-        const turnName = turnPointNames[step.id];
-        if (!turnName) return step;
-        return {
-          ...step,
-          instruction: `${step.instruction} near ${turnName}`,
-        };
+      directionSteps.map((step, idx, arr) => {
+        // For turn instructions, use the next step's street name if available
+        if (
+          step.icon && [
+            'arrow-top-right', 'arrow-right-bold', 'arrow-bottom-right',
+            'arrow-top-left', 'arrow-left-bold', 'arrow-bottom-left',
+            'backup-restore'
+          ].includes(step.icon)
+        ) {
+          const nextStep = arr[idx + 1];
+          const nextStreetName = nextStep && nextStep.turnPoint ? turnPointNames[nextStep.id] : undefined;
+          if (nextStreetName) {
+            return {
+              ...step,
+              instruction: `${step.instruction.split(' ')[0]} ${step.instruction.split(' ').slice(1).join(' ')} onto ${nextStreetName}`,
+            };
+          }
+        }
+        return step;
       }),
     [directionSteps, turnPointNames],
   );
@@ -697,17 +719,50 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         <Text style={styles.routeTitle}>Turn-by-turn Directions</Text>
 
         {directionStepsWithLocationNames.length > 0 ? (
-          directionStepsWithLocationNames.map((step) => (
-            <View key={step.id} style={styles.directionRow}>
-              <View style={styles.directionIconWrap}>
-                <MaterialCommunityIcons name={step.icon as any} size={18} color={colors.primary} />
+          directionStepsWithLocationNames.map((step, idx, arr) => {
+            // Step number
+            const stepNum = idx + 1;
+            // Determine if this is a start, turn, or arrive step
+            let mainInstruction = '';
+            let continueInstruction = '';
+            if (idx === 0 && step.icon === 'navigation-variant') {
+              // Start step
+              mainInstruction = `Start from ${step.turnPoint ? turnPointNames[step.id] || 'origin' : 'origin'}`;
+              continueInstruction = arr[idx + 1]?.distanceText ? `Continue for ${arr[idx + 1].distanceText}` : '';
+            } else if (step.icon === 'flag-checkered') {
+              // Arrive step
+              mainInstruction = `Arrive at ${step.turnPoint ? turnPointNames[step.id] || 'destination' : 'destination'}`;
+              continueInstruction = '';
+            } else {
+              // Turn step
+              // Extract direction from instruction
+              const direction = step.instruction.split(' ')[1] ? step.instruction.split(' ')[1] : '';
+              const nextStreet = (() => {
+                // Try to get next street name
+                const nextStep = arr[idx + 1];
+                if (nextStep && nextStep.turnPoint) {
+                  return turnPointNames[nextStep.id] || '';
+                }
+                return '';
+              })();
+              mainInstruction = `${step.instruction.split(' ')[0]} ${direction} onto ${nextStreet}`;
+              continueInstruction = arr[idx + 1]?.distanceText ? `Continue for ${arr[idx + 1].distanceText}` : '';
+            }
+            return (
+              <View key={step.id} style={styles.directionRow}>
+                <View style={styles.directionIconWrap}>
+                  <MaterialCommunityIcons name={step.icon as any} size={18} color={colors.primary} />
+                </View>
+                <View style={styles.directionTextWrap}>
+                  <Text style={styles.directionInstruction}>{`🔹 Step ${stepNum}`}</Text>
+                  <Text style={styles.directionInstruction}>{mainInstruction}</Text>
+                  {continueInstruction ? (
+                    <Text style={styles.directionDistance}>{continueInstruction}</Text>
+                  ) : null}
+                </View>
               </View>
-              <View style={styles.directionTextWrap}>
-                {step.distanceText ? <Text style={styles.directionDistance}>{step.distanceText}</Text> : null}
-                <Text style={styles.directionInstruction}>{step.instruction}</Text>
-              </View>
-            </View>
-          ))
+            );
+          })
         ) : (
           <Text style={styles.directionFallbackText}>Directions will appear once route geometry is available.</Text>
         )}
@@ -726,16 +781,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         </View>
       )}
 
-          <View style={styles.footer}>
-            <Button
-              mode="contained"
-              onPress={handleSaveRoute}
-              style={styles.saveButton}
-              icon="content-save"
-            >
-              Save Route
-            </Button>
-          </View>
+          
         </Animated.ScrollView>
       </Animated.View>
     </View>

@@ -29,7 +29,7 @@ const PublicTransportScreen: React.FC = () => {
   const [budget, setBudget] = useState<string>('');
   // Leave empty by default so long-distance trips aren't accidentally filtered out.
   const [maxTransfers, setMaxTransfers] = useState<string>('');
-  const [preferredModes, setPreferredModes] = useState<string[]>(['walk','jeepney','bus','lrt','mrt','pnr']);
+  const [preferredModes, setPreferredModes] = useState<string[]>(['jeepney','bus','lrt','mrt','pnr']);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -296,7 +296,7 @@ const PublicTransportScreen: React.FC = () => {
         <Text style={[styles.inputLabel, { marginTop: 12 }]}>Preferred Modes</Text>
         <Text style={styles.modesNote}>Note: Modes are selected by default. Deselect any mode you do not want to include.</Text>
         <View style={styles.modesRow}>
-          {['walk','jeepney','bus','lrt','mrt','pnr'].map((m) => {
+          {['jeepney','bus','lrt','mrt','pnr'].map((m) => {
             const active = preferredModes.includes(m);
             return (
               <TouchableOpacity
@@ -476,7 +476,7 @@ const PublicTransportScreen: React.FC = () => {
         <Text style={[styles.inputLabel, { marginTop: 12 }]}>Preferred Modes</Text>
         <Text style={styles.modesNote}>Note: Modes are selected by default. Deselect any mode you do not want to include.</Text>
         <View style={styles.modesRow}>
-          {['walk','jeepney','bus','lrt','mrt','pnr'].map((m) => {
+          {['jeepney','bus','lrt','mrt','pnr'].map((m) => {
             const active = preferredModes.includes(m);
             return (
               <TouchableOpacity
