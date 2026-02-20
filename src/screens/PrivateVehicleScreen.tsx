@@ -80,8 +80,6 @@ const PrivateVehicleScreen: React.FC = () => {
   const [locationPickMode, setLocationPickMode] = useState<'origin' | 'destination' | null>(null);
   const [pendingStopoverIndex, setPendingStopoverIndex] = useState<number | null>(null);
   const [preferences, setPreferences] = useState<DrivingPreferences>({
-    avoidTolls: false,
-    avoidHighways: false,
     preferShortest: true
   });
 
@@ -564,30 +562,6 @@ const PrivateVehicleScreen: React.FC = () => {
 
               <View style={styles.preferenceRow}>
                 <View style={styles.preferenceInfo}>
-                  <MaterialCommunityIcons name="cash-remove" size={18} color={colors.textSecondary} />
-                  <Text style={styles.preferenceText}>Avoid Tolls</Text>
-                </View>
-                <Switch
-                  value={preferences.avoidTolls}
-                  onValueChange={(value) => setPreferences({ ...preferences, avoidTolls: value })}
-                  color={colors.primary}
-                />
-              </View>
-
-              <View style={styles.preferenceRow}>
-                <View style={styles.preferenceInfo}>
-                  <MaterialCommunityIcons name="road-variant" size={18} color={colors.textSecondary} />
-                  <Text style={styles.preferenceText}>Avoid Expressways</Text>
-                </View>
-                <Switch
-                  value={preferences.avoidHighways}
-                  onValueChange={(value) => setPreferences({ ...preferences, avoidHighways: value })}
-                  color={colors.primary}
-                />
-              </View>
-
-              <View style={styles.preferenceRow}>
-                <View style={styles.preferenceInfo}>
                   <MaterialCommunityIcons name="map-marker-distance" size={18} color={colors.textSecondary} />
                   <Text style={styles.preferenceText}>Prefer Shortest Distance</Text>
                 </View>
@@ -717,30 +691,6 @@ const PrivateVehicleScreen: React.FC = () => {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Driving Preferences</Text>
-        
-        <View style={styles.preferenceRow}>
-          <View style={styles.preferenceInfo}>
-            <MaterialCommunityIcons name="cash-remove" size={18} color={colors.textSecondary} />
-            <Text style={styles.preferenceText}>Avoid Tolls</Text>
-          </View>
-          <Switch
-            value={preferences.avoidTolls}
-            onValueChange={(value) => setPreferences({ ...preferences, avoidTolls: value })}
-            color={colors.primary}
-          />
-        </View>
-
-        <View style={styles.preferenceRow}>
-          <View style={styles.preferenceInfo}>
-            <MaterialCommunityIcons name="road-variant" size={18} color={colors.textSecondary} />
-            <Text style={styles.preferenceText}>Avoid Expressways</Text>
-          </View>
-          <Switch
-            value={preferences.avoidHighways}
-            onValueChange={(value) => setPreferences({ ...preferences, avoidHighways: value })}
-            color={colors.primary}
-          />
-        </View>
 
         <View style={styles.preferenceRow}>
           <View style={styles.preferenceInfo}>

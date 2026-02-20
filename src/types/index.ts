@@ -137,7 +137,6 @@ export interface PrivateVehicleRoute {
   fuelConsumption: number; // in liters
   fuelCost: number;
   estimatedTime: number; // in minutes
-  avoidTolls: boolean;
   /** Road-following polyline for map rendering (from backend geometry_coords). */
   geometry?: Coordinates[];
   /** Optional breakdown of the journey by legs (origin → stopovers → destination). */
@@ -149,8 +148,6 @@ export interface PrivateVehicleRoute {
 
 // Driving preferences
 export interface DrivingPreferences {
-  avoidTolls: boolean;
-  avoidHighways: boolean;
   preferShortest: boolean;
 }
 
