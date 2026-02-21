@@ -146,12 +146,14 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     : 'top-center';
 
   const fitPadding = {
-    top: Math.max(0, Number(fitBoundsPadding?.top ?? 56)),
-    right: Math.max(0, Number(fitBoundsPadding?.right ?? 56)),
-    bottom: Math.max(0, Number(fitBoundsPadding?.bottom ?? 56)),
-    left: Math.max(0, Number(fitBoundsPadding?.left ?? 56))
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0
   };
-  const fitMaxZoom = Math.max(1, Math.min(20, Number(fitBoundsMaxZoom ?? 14)));
+  const fitMaxZoom = Math.max(1, Math.min(20, Number(fitBoundsMaxZoom ?? 20)));
+  // Tighter fit: allow highest zoom (least zoomed out)
+  const fitTighterMaxZoom = 20;
 
   // Allow parent to programmatically arm a selection mode (e.g., pick stopover from map).
   useEffect(() => {
@@ -661,31 +663,13 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     return points;
   })();
 
-  const endpointReferenceFitPoints: [number, number][] = (() => {
-    const originCoord = origin?.coordinates;
-    const destinationCoord = destination?.coordinates;
-    if (!isValidCoord(originCoord) || !isValidCoord(destinationCoord)) return [];
-
-    const midLat = (originCoord.latitude + destinationCoord.latitude) / 2;
-    const midLon = (originCoord.longitude + destinationCoord.longitude) / 2;
-
-    const latSpan = Math.abs(originCoord.latitude - destinationCoord.latitude);
-    const lonSpan = Math.abs(originCoord.longitude - destinationCoord.longitude);
-
-    const halfLat = Math.max((latSpan / 2) * 1.1, 0.002);
-    const halfLon = Math.max((lonSpan / 2) * 1.1, 0.002);
-
-    return [
-      [originCoord.latitude, originCoord.longitude],
-      [destinationCoord.latitude, destinationCoord.longitude],
-      [midLat + halfLat, midLon + halfLon],
-      [midLat + halfLat, midLon - halfLon],
-      [midLat - halfLat, midLon + halfLon],
-      [midLat - halfLat, midLon - halfLon]
-    ];
-  })();
-
-  const effectiveFitPoints: [number, number][] = defaultFitPoints;
+  // Always fit to origin and destination pins if both are set
+  const effectiveFitPoints: [number, number][] = (origin && destination)
+    ? [
+        [origin.coordinates.latitude, origin.coordinates.longitude],
+        [destination.coordinates.latitude, destination.coordinates.longitude]
+      ]
+    : [];
 
   const customPolylineConnectors: {
     coords: { latitude: number; longitude: number }[];
@@ -891,7 +875,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
                 ? {
                     paddingTopLeft: [fitPadding.left, fitPadding.top],
                     paddingBottomRight: [fitPadding.right, fitPadding.bottom],
-                    maxZoom: fitMaxZoom
+                    maxZoom: fitTighterMaxZoom
                   }
                 : undefined
             }
