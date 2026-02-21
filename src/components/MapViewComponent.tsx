@@ -108,7 +108,6 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   autoSelectMode = null,
   showRoute = false,
   showTransferMarkers = true,
-  fitBoundsPadding,
   fitBoundsMaxZoom,
   boundaryMode = 'none',
   hideSelectionControls = false,
@@ -619,49 +618,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     return markers;
   };
 
-  const defaultFitPoints: [number, number][] = (() => {
-    const points: [number, number][] = [];
-
-    const pushCoord = (coord?: { latitude: number; longitude: number } | null) => {
-      if (!coord || !isValidCoord(coord)) return;
-      points.push([coord.latitude, coord.longitude]);
-    };
-
-    pushCoord(origin?.coordinates);
-    pushCoord(destination?.coordinates);
-    (stopovers || []).forEach((s) => pushCoord(s?.location?.coordinates));
-
-    if (route?.segments?.length) {
-      const { segPaths, connectors } = computeRenderPaths(route.segments);
-      segPaths.forEach((path) => {
-        if (!Array.isArray(path) || path.length < 2) return;
-        path.forEach((coord) => pushCoord(coord));
-      });
-      connectors.forEach((path) => {
-        if (!Array.isArray(path) || path.length < 2) return;
-        path.forEach((coord) => pushCoord(coord));
-      });
-    } else if (showRoute && polylines && polylines.length > 0) {
-      polylines.forEach((polyline) => {
-        if (!Array.isArray(polyline?.coords) || polyline.coords.length < 2) return;
-        polyline.coords.forEach((coord) => pushCoord(coord));
-      });
-    } else if (showRoute && polylineCoords && polylineCoords.length >= 2) {
-      polylineCoords.forEach((coord) => pushCoord(coord));
-    } else if (previewCoords && previewCoords.length >= 2) {
-      previewCoords.forEach((coord) => pushCoord(coord));
-    }
-
-    if (showTransferMarkers && route?.segments?.length) {
-      getTransferMarkers().forEach((marker) => pushCoord(marker.coordinate));
-    }
-
-    if (Array.isArray(instructionMarkers) && instructionMarkers.length > 0) {
-      instructionMarkers.forEach((m) => pushCoord(m?.coordinate));
-    }
-
-    return points;
-  })();
+  
 
   // Always fit to origin and destination pins if both are set
   const effectiveFitPoints: [number, number][] = (origin && destination)
