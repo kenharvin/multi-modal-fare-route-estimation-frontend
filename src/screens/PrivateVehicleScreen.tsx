@@ -79,7 +79,7 @@ const PrivateVehicleScreen: React.FC = () => {
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
   const [locationPickMode, setLocationPickMode] = useState<'origin' | 'destination' | null>(null);
   const [pendingStopoverIndex, setPendingStopoverIndex] = useState<number | null>(null);
-  const [preferences, setPreferences] = useState<DrivingPreferences>({
+  const [preferences] = useState<DrivingPreferences>({
     preferShortest: true
   });
 
@@ -190,6 +190,7 @@ const PrivateVehicleScreen: React.FC = () => {
     React.useCallback(() => {
       let cancelled = false;
 
+
       const loadFuelSettings = async () => {
         const [rows, fuelOptionsRows] = await Promise.all([
           getPrivateVehicleFuelSettings(),
@@ -207,7 +208,12 @@ const PrivateVehicleScreen: React.FC = () => {
 
         if (fuelOptionsRows.length > 0) {
           setFuelPriceOptions(fuelOptionsRows);
-          const defaultFuel = fuelOptionsRows.find((row) => row.is_default) || fuelOptionsRows[0];
+          let defaultFuel = fuelOptionsRows.find((row) => row.is_default) || fuelOptionsRows[0];
+          // If vehicle is motorcycle, never select diesel
+          if (vehicle.category === VehicleCategory.MOTORCYCLE && defaultFuel.fuel_type === 'diesel') {
+            const nonDiesel = fuelOptionsRows.find((row) => row.fuel_type !== 'diesel');
+            if (nonDiesel) defaultFuel = nonDiesel;
+          }
           if (defaultFuel) {
             setSelectedFuelType(defaultFuel.fuel_type);
           }
@@ -249,6 +255,7 @@ const PrivateVehicleScreen: React.FC = () => {
     [vehicle.category, vehicleCategories]
   );
 
+
   useEffect(() => {
     if (!selectedVehicleCategory) return;
 
@@ -257,7 +264,15 @@ const PrivateVehicleScreen: React.FC = () => {
       fuelEfficiency: selectedVehicleCategory.efficiency || prev.fuelEfficiency
     }));
     setFuelPrice(String(selectedAdminFuelPrice || 0));
-  }, [selectedVehicleCategory, selectedAdminFuelPrice]);
+
+    // If motorcycle is selected and diesel is selected, auto-switch to a non-diesel fuel type
+    if (selectedVehicleCategory.value === VehicleCategory.MOTORCYCLE && selectedFuelType === 'diesel') {
+      const nonDiesel = fuelPriceOptions.find((row) => row.fuel_type !== 'diesel');
+      if (nonDiesel) {
+        setSelectedFuelType(nonDiesel.fuel_type);
+      }
+    }
+  }, [selectedVehicleCategory, selectedAdminFuelPrice, selectedFuelType, fuelPriceOptions]);
 
   const handleVehicleCategoryChange = (category: VehicleCategory) => {
     setVehicle({

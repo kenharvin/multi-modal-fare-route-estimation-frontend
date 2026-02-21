@@ -168,21 +168,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     void calculateRoute();
   }, [calculateRoute]);
 
-  const handleSaveRoute = () => {
-    Alert.alert(
-      'Save Route',
-      'Would you like to save this route?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Save',
-          onPress: () => {
-            Alert.alert('Success', 'Route saved successfully!');
-          }
-        }
-      ]
-    );
-  };
+  
 
   const isMock = routeResult?.source === 'mock';
 
@@ -353,13 +339,16 @@ const PrivateVehicleResultsScreen: React.FC = () => {
             nextStreetName = turnPointNames[`${nextCoord.latitude},${nextCoord.longitude}`];
           }
         }
+
+        
+
         steps.push({
           id: `${legLabel}-turn-${i}`,
           icon: maneuver.icon,
           instruction: nextStreetName
-            ? `${maneuver.text.replace('Turn', 'Turn')} onto ${nextStreetName}`
+            ? `${maneuver.text} onto ${nextStreetName}`
             : `${maneuver.text}`,
-          distanceText: `After ${formatDistance(sinceLastTurnM)}`,
+          distanceText: `${formatDistance(sinceLastTurnM)}`,
           turnPoint: coords[i],
         });
         sinceLastTurnM = 0;
@@ -464,16 +453,58 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   );
 
   const instructionMarkers = useMemo(() => {
-    return directionStepsWithLocationNames
+    // Group steps by rounded coordinate to detect overlaps
+    const steps = directionStepsWithLocationNames
       .filter((step) => !!step.turnPoint)
-      .slice(0, 24)
-      .map((step, index) => ({
-        coordinate: step.turnPoint as { latitude: number; longitude: number },
-        stepNumber: index + 1,
-        title: step.instruction,
-        subtitle: step.distanceText,
-        icon: step.icon,
-      }));
+      .slice(0, 24);
+
+    // Helper to round coordinates for grouping (about ~1m precision)
+    const roundCoord = (c: { latitude: number; longitude: number }) =>
+      `${c.latitude.toFixed(5)},${c.longitude.toFixed(5)}`;
+
+    // Group steps by location
+    const grouped: Record<string, typeof steps> = {};
+    steps.forEach((step) => {
+      const key = roundCoord(step.turnPoint!);
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(step);
+    });
+
+    // Offset overlapping markers side by side
+    const OFFSET_M = 8; // meters
+    const EARTH_RADIUS = 6378137;
+    const offsetCoord = (c: { latitude: number; longitude: number }, idx: number, total: number) => {
+      if (total === 1) return c;
+      // Offset east-west (longitude) direction
+      const offsetMeters = (idx - (total - 1) / 2) * OFFSET_M;
+      const dLon = (offsetMeters / (EARTH_RADIUS * Math.cos((Math.PI * c.latitude) / 180))) * (180 / Math.PI);
+      return {
+        latitude: c.latitude,
+        longitude: c.longitude + dLon,
+      };
+    };
+
+    let markerIdx = 0;
+    const markers: {
+      coordinate: { latitude: number; longitude: number };
+      stepNumber: number;
+      title: string;
+      subtitle: string;
+      icon: string;
+    }[] = [];
+    Object.values(grouped).forEach((group) => {
+      group.forEach((step, idx) => {
+        markers.push({
+          coordinate: offsetCoord(step.turnPoint!, idx, group.length),
+          stepNumber: markerIdx + 1,
+          title: step.distanceText ? `After ${step.distanceText}` : '',
+          subtitle: step.instruction,
+          icon: step.icon,
+        });
+        markerIdx++;
+      });
+    });
+    return markers;
   }, [directionStepsWithLocationNames]);
 
   if (isLoading) {
@@ -596,21 +627,23 @@ const PrivateVehicleResultsScreen: React.FC = () => {
                           </View>
                           <Text style={styles.legMetricValue}>₱{Number(fuelCostLeg || 0).toFixed(2)}</Text>
                         </View>
+                        <View style={styles.verticalDivider} />
                         <View style={styles.legMetricItem}>
                           <Text style={styles.legMetricLabel}>Speed</Text>
                           <Text style={styles.legMetricValue}>
                             {speedKph ? `${speedKph.toFixed(1)} km/h` : '—'}
                           </Text>
                         </View>
+                        <View style={styles.verticalDivider} />
                         <View style={styles.legMetricItem}>
-                          <Text style={styles.legMetricLabel}>ETA</Text>
-                          <Text style={styles.legMetricValue}>{etaRange}</Text>
+                          <Text style={styles.legMetricLabel}>Time</Text>
+                          <Text style={styles.legMetricValue}>{formatTimeRange(Math.round(timeMin))}</Text>
                         </View>
                       </View>
-
+                      
                       <View style={styles.legMetaRow}>
-                        <Text style={styles.legMetaText}>Distance: {dist.toFixed(1)} km</Text>
-                        <Text style={styles.legMetaText}>Time: {formatTimeRange(Math.round(timeMin))}</Text>
+                        <Text style={styles.legMetaText}>Distance: {dist.toFixed(1)} km | </Text>
+                        <Text style={styles.legMetaText}>ETA: {etaRange}</Text>
                       </View>
                     </View>
                   );
@@ -975,7 +1008,16 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   legMetricsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  verticalDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: colors.gray5,
+    marginHorizontal: spacing.md,
+    borderRadius: 1,
   },
   legMetricItem: {
     flex: 1,

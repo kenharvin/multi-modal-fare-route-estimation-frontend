@@ -274,11 +274,7 @@ const RouteResultsScreen: React.FC = () => {
     />
   ), [collapseSheet, handleSelectRoute, selectedRoute?.id]);
 
-  const handleAddDestination = () => {
-    if (selectedRoute) {
-      navigation.navigate('TripPlan', { initialRoute: selectedRoute });
-    }
-  };
+  
 
   if (isLoading) {
     return <LogoLoadingScreen message="Finding the best routes" />;
@@ -383,14 +379,7 @@ const RouteResultsScreen: React.FC = () => {
           <View style={styles.footer}>
             <Text style={styles.summaryTitle}>Trip Summary</Text>
             <Text style={styles.summaryEmptyHint}>Select one route result first to view steps and trip summary.</Text>
-            <Button
-              mode="contained"
-              disabled
-              style={styles.continueButtonDisabled}
-              icon="plus"
-            >
-              Add Another Destination
-            </Button>
+            
           </View>
         )}
 
@@ -415,14 +404,7 @@ const RouteResultsScreen: React.FC = () => {
                 </Text>
               </View>
             </View>
-            <Button
-              mode="contained"
-              onPress={handleAddDestination}
-              style={styles.continueButton}
-              icon="plus"
-            >
-              Add Another Destination
-            </Button>
+            
           </View>
         )}
       </Animated.View>

@@ -339,8 +339,46 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     const connectors: { latitude: number; longitude: number }[][] = [];
 
     const getPath = (segment: RouteSegment) => {
-      const safeGeom = Array.isArray(segment.geometry) ? segment.geometry.filter(isValidCoord) : [];
+      let safeGeom = Array.isArray(segment.geometry) ? segment.geometry.filter(isValidCoord) : [];
       const fallback = [segment.origin.coordinates, segment.destination.coordinates].filter(isValidCoord);
+      if (safeGeom.length >= 2 && segment.origin?.coordinates && segment.destination?.coordinates) {
+        // Find closest index to origin
+        let minStartIdx = 0;
+        let minStartDist = haversineM(safeGeom[0], segment.origin.coordinates);
+        for (let i = 1; i < safeGeom.length; i++) {
+          const d = haversineM(safeGeom[i], segment.origin.coordinates);
+          if (d < minStartDist) {
+            minStartDist = d;
+            minStartIdx = i;
+          }
+        }
+        // Find closest index to destination
+        let minEndIdx = safeGeom.length - 1;
+        let minEndDist = haversineM(safeGeom[safeGeom.length - 1], segment.destination.coordinates);
+        for (let i = safeGeom.length - 2; i >= 0; i--) {
+          const d = haversineM(safeGeom[i], segment.destination.coordinates);
+          if (d < minEndDist) {
+            minEndDist = d;
+            minEndIdx = i;
+          }
+        }
+        // Ensure indices are in order
+        if (minStartIdx < minEndIdx) {
+          safeGeom = safeGeom.slice(minStartIdx, minEndIdx + 1);
+        } else if (minStartIdx > minEndIdx) {
+          safeGeom = safeGeom.slice(minEndIdx, minStartIdx + 1).reverse();
+        } else {
+          safeGeom = [safeGeom[minStartIdx]];
+        }
+        // Force start at origin if not close
+        if (haversineM(safeGeom[0], segment.origin.coordinates) > 30) {
+          safeGeom.unshift(segment.origin.coordinates);
+        }
+        // Force end at destination if not close
+        if (haversineM(safeGeom[safeGeom.length - 1], segment.destination.coordinates) > 30) {
+          safeGeom.push(segment.destination.coordinates);
+        }
+      }
       return safeGeom.length >= 2 ? safeGeom : fallback;
     };
 
@@ -357,6 +395,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       const b = segments[i + 1];
       const aIsWalk = isWalkType(a.transportType);
       const bIsWalk = isWalkType(b.transportType);
+      // Apply to all public transport segments (including jeepney)
       if (aIsWalk || bIsWalk) continue;
 
       const aPath = segPaths[i];
@@ -377,12 +416,13 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
           bestIdx = k;
         }
       }
-      if (bestIdx < 0 || bestM > 80) continue;
+      // Make detour trimming more aggressive for jeepney and similar segments
+      if (bestIdx < 0 || bestM > 120) continue;
 
       const tailM = polylineLenM(aPath.slice(bestIdx));
       const directM = haversineM(aPath[bestIdx], target);
-      const isShortHop = directM <= 140;
-      const isDetour = tailM > Math.max(220, directM * 3.0);
+      const isShortHop = directM <= 220;
+      const isDetour = tailM > Math.max(120, directM * 2.0);
       if (!isShortHop || !isDetour) continue;
 
       segPaths[i] = aPath.slice(0, bestIdx + 1);
@@ -632,8 +672,8 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     const latSpan = Math.abs(originCoord.latitude - destinationCoord.latitude);
     const lonSpan = Math.abs(originCoord.longitude - destinationCoord.longitude);
 
-    const halfLat = Math.max((latSpan / 2) * 1.8, 0.0045);
-    const halfLon = Math.max((lonSpan / 2) * 1.8, 0.0045);
+    const halfLat = Math.max((latSpan / 2) * 1.1, 0.002);
+    const halfLon = Math.max((lonSpan / 2) * 1.1, 0.002);
 
     return [
       [originCoord.latitude, originCoord.longitude],
@@ -645,10 +685,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     ];
   })();
 
-  const effectiveFitPoints: [number, number][] =
-    endpointReferenceFitPoints.length >= 2
-      ? [...defaultFitPoints, ...endpointReferenceFitPoints]
-      : defaultFitPoints;
+  const effectiveFitPoints: [number, number][] = defaultFitPoints;
 
   const customPolylineConnectors: {
     coords: { latitude: number; longitude: number }[];
