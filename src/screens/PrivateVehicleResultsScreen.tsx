@@ -44,6 +44,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
   const [turnPointNames, setTurnPointNames] = useState<Record<string, string>>({});
   const [isResolvingDirectionDetails, setIsResolvingDirectionDetails] = useState<boolean>(false);
+  const [isDirectionDetailsHydrated, setIsDirectionDetailsHydrated] = useState<boolean>(false);
   const reverseGeocodeCacheRef = useRef<Record<string, string>>({});
 
   const sheetProgress = useRef(new Animated.Value(0)).current; // 0=collapsed, 1=expanded
@@ -426,6 +427,19 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   }, [haversineM, routeResult]);
 
   useEffect(() => {
+    if (!routeResult) {
+      setTurnPointNames({});
+      reverseGeocodeCacheRef.current = {};
+      setIsDirectionDetailsHydrated(false);
+      return;
+    }
+
+    setTurnPointNames({});
+    reverseGeocodeCacheRef.current = {};
+    setIsDirectionDetailsHydrated(false);
+  }, [routeResult]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadTurnPointNames = async () => {
@@ -437,13 +451,14 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       );
       if (pending.length === 0) {
         setIsResolvingDirectionDetails(false);
+        setIsDirectionDetailsHydrated(true);
         return;
       }
 
       const updates: Record<string, string> = {};
 
       const unresolvedByCoord: Record<string, { lat: number; lon: number; stepIds: string[] }> = {};
-      for (const step of pending.slice(0, 24)) {
+      for (const step of pending) {
         if (!step.turnPoint) continue;
         const key = coordKey(step.turnPoint.latitude, step.turnPoint.longitude);
         const cached = reverseGeocodeCacheRef.current[key];
@@ -461,18 +476,24 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         unresolvedByCoord[key].stepIds.push(step.id);
       }
 
-      const unresolvedEntries = Object.entries(unresolvedByCoord).slice(0, 8);
+      const unresolvedEntries = Object.entries(unresolvedByCoord);
       if (unresolvedEntries.length > 0) {
         setIsResolvingDirectionDetails(true);
-        await Promise.allSettled(
-          unresolvedEntries.map(async ([key, val]) => {
-            const resolved = await reverseGeocodePoi(val.lat, val.lon);
-            const label = String(resolved?.name || resolved?.address || '').trim();
-            if (label) {
-              reverseGeocodeCacheRef.current[key] = label;
-            }
-          })
-        );
+        const CHUNK_SIZE = 8;
+        for (let i = 0; i < unresolvedEntries.length; i += CHUNK_SIZE) {
+          const chunk = unresolvedEntries.slice(i, i + CHUNK_SIZE);
+          await Promise.allSettled(
+            chunk.map(async ([key, val]) => {
+              const resolved = await reverseGeocodePoi(val.lat, val.lon);
+              const label = String(resolved?.name || resolved?.address || '').trim();
+              if (label) {
+                reverseGeocodeCacheRef.current[key] = label;
+              }
+            })
+          );
+
+          if (cancelled) return;
+        }
       }
 
       for (const [key, val] of unresolvedEntries) {
@@ -489,6 +510,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
 
       if (!cancelled) {
         setIsResolvingDirectionDetails(false);
+        setIsDirectionDetailsHydrated(true);
       }
     };
 
@@ -775,6 +797,8 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     [instructionMarkers],
   );
 
+  const shouldHideMapWhilePreparing = !!routeResult && !isDirectionDetailsHydrated;
+
   if (isLoading) {
     return <LogoLoadingScreen message="Calculating route and fuel cost" />;
   }
@@ -802,18 +826,24 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     <View style={styles.container}>
       {/* Map as full-screen background */}
       <View style={styles.mapFill}>
-        <MapViewComponent
-          origin={routeResult.origin}
-          destination={routeResult.destination}
-          stopovers={routeResult.stopovers}
-          polylines={legPolylines}
-          polylineCoords={!legPolylines ? routeResult.geometry : null}
-          instructionMarkers={instructionMarkers}
-          showRoute={true}
-          boundaryMode="private"
-          fitBoundsPadding={{ top: 64, right: 64, bottom: 520, left: 64 }}
-          fitBoundsMaxZoom={11}
-        />
+        {shouldHideMapWhilePreparing ? (
+          <View style={styles.mapPreparationContainer}>
+            <LogoLoadingScreen message="Preparing turn-by-turn map" />
+          </View>
+        ) : (
+          <MapViewComponent
+            origin={routeResult.origin}
+            destination={routeResult.destination}
+            stopovers={routeResult.stopovers}
+            polylines={legPolylines}
+            polylineCoords={!legPolylines ? routeResult.geometry : null}
+            instructionMarkers={instructionMarkers}
+            showRoute={true}
+            boundaryMode="private"
+            fitBoundsPadding={{ top: 64, right: 64, bottom: 520, left: 64 }}
+            fitBoundsMaxZoom={11}
+          />
+        )}
       </View>
 
       {/* Bottom sheet: expands as user scrolls */}
@@ -855,9 +885,9 @@ const PrivateVehicleResultsScreen: React.FC = () => {
           }}
         >
           {isResolvingDirectionDetails && (
-            <View style={styles.warningCard}>
-              <Text style={styles.warningTitle}>Getting your directions ready…</Text>
-              <Text style={styles.warningText}>
+            <View style={styles.statusCard}>
+              <Text style={styles.statusTitle}>Getting your directions ready…</Text>
+              <Text style={styles.statusText}>
                 Adding street names to your turn-by-turn steps.
               </Text>
             </View>
@@ -909,7 +939,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
                         </View>
                         <View style={styles.verticalDivider} />
                         <View style={styles.legMetricItem}>
-                          <Text style={styles.legMetricLabel}>Speed</Text>
+                          <Text style={styles.legMetricLabel}>Avg speed (est.)</Text>
                           <Text style={styles.legMetricValue}>
                             {speedKph ? `${speedKph.toFixed(1)} km/h` : '—'}
                           </Text>
@@ -925,6 +955,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
                         <Text style={styles.legMetaText}>Distance: {dist.toFixed(1)} km | </Text>
                         <Text style={styles.legMetaText}>ETA: {etaRange}</Text>
                       </View>
+                      <Text style={styles.legMetaHint}>Avg speed is estimated from leg distance and ETA.</Text>
                     </View>
                   );
                 });

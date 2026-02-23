@@ -6,6 +6,10 @@ export const createPrivateVehicleResultsScreenStyles = (colors: ThemeColors) =>
     mapFill: {
       ...StyleSheet.absoluteFillObject
     },
+    mapPreparationContainer: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
     container: {
       flex: 1,
       backgroundColor: colors.background
@@ -78,7 +82,10 @@ export const createPrivateVehicleResultsScreenStyles = (colors: ThemeColors) =>
       padding: spacing.md,
       marginHorizontal: spacing.lg,
       marginTop: spacing.lg,
-      borderRadius: borderRadius.xl
+      borderRadius: borderRadius.xl,
+      width: '100%',
+      maxWidth: 920,
+      alignSelf: 'center'
     },
     warningTitle: {
       fontSize: fontSize.md,
@@ -95,6 +102,28 @@ export const createPrivateVehicleResultsScreenStyles = (colors: ThemeColors) =>
       color: colors.gray1,
       marginTop: spacing.sm
     },
+    statusCard: {
+      backgroundColor: colors.primaryLight,
+      borderColor: colors.primary,
+      borderWidth: 1,
+      padding: spacing.md,
+      marginHorizontal: spacing.lg,
+      marginTop: spacing.lg,
+      borderRadius: borderRadius.xl,
+      width: '100%',
+      maxWidth: 920,
+      alignSelf: 'center'
+    },
+    statusTitle: {
+      fontSize: fontSize.md,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: spacing.xs,
+    },
+    statusText: {
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+    },
     summaryCard: {
       backgroundColor: colors.white,
       padding: spacing.lg,
@@ -103,7 +132,10 @@ export const createPrivateVehicleResultsScreenStyles = (colors: ThemeColors) =>
       borderRadius: borderRadius.xl,
       borderWidth: 1,
       borderColor: colors.gray6,
-      ...shadows.small
+      ...shadows.small,
+      width: '100%',
+      maxWidth: 920,
+      alignSelf: 'center'
     },
     summaryTitle: {
       fontSize: fontSize.xl,
@@ -231,6 +263,12 @@ export const createPrivateVehicleResultsScreenStyles = (colors: ThemeColors) =>
       fontSize: fontSize.sm,
       color: colors.textSecondary
     },
+    legMetaHint: {
+      fontSize: fontSize.xs,
+      color: colors.textSecondary,
+      marginTop: spacing.xs,
+      fontStyle: 'italic'
+    },
     routeCard: {
       backgroundColor: colors.white,
       padding: spacing.lg,
@@ -239,7 +277,10 @@ export const createPrivateVehicleResultsScreenStyles = (colors: ThemeColors) =>
       borderRadius: borderRadius.xl,
       borderWidth: 1,
       borderColor: colors.gray6,
-      ...shadows.small
+      ...shadows.small,
+      width: '100%',
+      maxWidth: 920,
+      alignSelf: 'center'
     },
     routeTitle: {
       fontSize: fontSize.xl,
@@ -331,7 +372,10 @@ export const createPrivateVehicleResultsScreenStyles = (colors: ThemeColors) =>
       padding: spacing.lg,
       marginHorizontal: spacing.lg,
       marginTop: spacing.lg,
-      alignItems: 'center'
+      alignItems: 'center',
+      width: '100%',
+      maxWidth: 920,
+      alignSelf: 'center'
     },
     scoreTitle: {
       fontSize: fontSize.xl,
@@ -364,7 +408,10 @@ export const createPrivateVehicleResultsScreenStyles = (colors: ThemeColors) =>
     },
     footer: {
       padding: spacing.lg,
-      paddingBottom: spacing.xxl
+      paddingBottom: spacing.xxl,
+      width: '100%',
+      maxWidth: 920,
+      alignSelf: 'center'
     },
     saveButton: {
       borderRadius: borderRadius.lg,

@@ -8,7 +8,7 @@ import { useApp } from '@context/AppContext';
 import { useLocation } from '@context/LocationContext';
 import RouteCard from '@components/RouteCard';
 import MapViewComponent from '@components/MapViewComponent';
-import { Button, ActivityIndicator } from 'react-native-paper';
+import { Button } from 'react-native-paper';
 import LogoLoadingScreen from '@components/LogoLoadingScreen';
 import { fetchRoutes, fetchRouteGeometry, pingBackend } from '@services/api';
 import { formatTimeRange } from '@/utils/helpers';
@@ -174,6 +174,12 @@ const RouteResultsScreen: React.FC = () => {
     return selectedRouteGeometry?.id === selectedRouteId ? selectedRouteGeometry : base;
   }, [routes, selectedRouteGeometry, selectedRouteId]);
 
+  const shouldHideMapWhilePreparingRoute = useMemo(() => {
+    if (!selectedRouteId) return false;
+    if (isGeometryLoading) return true;
+    return !(selectedRouteGeometry && selectedRouteGeometry.id === selectedRouteId);
+  }, [isGeometryLoading, selectedRouteGeometry, selectedRouteId]);
+
   const cacheRouteGeometry = useCallback((updatedRoute: Route) => {
     const cache = geometryCacheRef.current;
     cache.delete(updatedRoute.id);
@@ -319,19 +325,19 @@ const RouteResultsScreen: React.FC = () => {
     <View style={styles.container}>
       {/* Map as full-screen background */}
       <View style={StyleSheet.absoluteFillObject}>
-        <MapViewComponent
-          origin={origin}
-          destination={destination}
-          route={selectedRoute}
-          boundaryMode="public"
-          fitBoundsPadding={{ top: 64, right: 64, bottom: 520, left: 64 }}
-          fitBoundsMaxZoom={11}
-        />
-        {isGeometryLoading && (
-          <View style={styles.mapOverlay}>
-            <ActivityIndicator size="small" color="#3498db" />
-            <Text style={styles.mapOverlayText}>Loading route on map…</Text>
+        {shouldHideMapWhilePreparingRoute ? (
+          <View style={styles.mapPreparationContainer}>
+            <LogoLoadingScreen message="Preparing selected route on map" />
           </View>
+        ) : (
+          <MapViewComponent
+            origin={origin}
+            destination={destination}
+            route={selectedRoute}
+            boundaryMode="public"
+            fitBoundsPadding={{ top: 64, right: 64, bottom: 520, left: 64 }}
+            fitBoundsMaxZoom={11}
+          />
         )}
       </View>
 
@@ -487,21 +493,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.textWhite,
     fontWeight: '700'
   },
-  mapOverlay: {
-    position: 'absolute',
-    right: 12,
-    top: 12,
-    backgroundColor: colors.white,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8
-  },
-  mapOverlayText: {
-    fontSize: fontSize.sm,
-    color: colors.textPrimary
+  mapPreparationContainer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.background,
   },
   sheet: {
     position: 'absolute',
