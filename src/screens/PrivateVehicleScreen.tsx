@@ -79,8 +79,8 @@ const PrivateVehicleScreen: React.FC = () => {
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
   const [locationPickMode, setLocationPickMode] = useState<'origin' | 'destination' | null>(null);
   const [pendingStopoverIndex, setPendingStopoverIndex] = useState<number | null>(null);
-  const [preferences] = useState<DrivingPreferences>({
-    preferShortest: true
+  const [preferences, setPreferences] = useState<DrivingPreferences>({
+    preferShortest: false
   });
 
   const windowHeight = Dimensions.get('window').height;
@@ -299,6 +299,13 @@ const PrivateVehicleScreen: React.FC = () => {
     }
   };
 
+  const handleTogglePreferShortest = (value: boolean) => {
+    setPreferences((prev) => ({
+      ...prev,
+      preferShortest: !!value,
+    }));
+  };
+
   const handleAddStopoverField = () => {
     setStopoverLocations((prev) => {
       if (prev.length >= MAX_STOPOVERS) return prev;
@@ -453,6 +460,62 @@ const PrivateVehicleScreen: React.FC = () => {
     );
   };
 
+  const renderRoutingPreferenceControls = () => {
+    return (
+      <>
+        <Text style={styles.sectionTitle}>Routing Preference</Text>
+        <View style={styles.routePreferenceRow}>
+          <TouchableOpacity
+            style={[
+              styles.routePreferenceButton,
+              !preferences.preferShortest && styles.routePreferenceButtonActive,
+            ]}
+            onPress={() => handleTogglePreferShortest(false)}
+          >
+            <MaterialCommunityIcons
+              name="clock-fast"
+              size={20}
+              color={!preferences.preferShortest ? colors.primary : colors.textSecondary}
+            />
+            <Text
+              style={[
+                styles.routePreferenceLabel,
+                !preferences.preferShortest && styles.routePreferenceLabelActive,
+              ]}
+            >
+              Fastest ETA
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.routePreferenceButton,
+              preferences.preferShortest && styles.routePreferenceButtonActive,
+            ]}
+            onPress={() => handleTogglePreferShortest(true)}
+          >
+            <MaterialCommunityIcons
+              name="map-marker-distance"
+              size={20}
+              color={preferences.preferShortest ? colors.primary : colors.textSecondary}
+            />
+            <Text
+              style={[
+                styles.routePreferenceLabel,
+                preferences.preferShortest && styles.routePreferenceLabelActive,
+              ]}
+            >
+              Shortest Distance
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.routePreferenceHint}>
+          Fastest ETA may use longer roads; shortest distance may take more time.
+        </Text>
+      </>
+    );
+  };
+
   if (showMap) {
     return (
       <View style={styles.mapScreen}>
@@ -586,15 +649,7 @@ const PrivateVehicleScreen: React.FC = () => {
 
             <View style={styles.sheetDivider} />
             <View style={styles.sheetSection}>
-              
-
-              <View style={styles.preferenceRow}>
-                <View style={styles.preferenceInfo}>
-                  <MaterialCommunityIcons name="map-marker-distance" size={18} color={colors.textSecondary} />
-                  <Text style={styles.preferenceText}>Prefer Shortest Distance (Default)</Text>
-                </View>
-                
-              </View>
+              {renderRoutingPreferenceControls()}
             </View>
 
             <View style={styles.sheetFooter}>
@@ -725,14 +780,8 @@ const PrivateVehicleScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* Shortest Distance (Default) label before Add Stopover */}
       <View style={styles.section}>
-        
-          <View style={styles.preferenceInfo}>
-            <MaterialCommunityIcons name="map-marker-distance" size={18} color={colors.textSecondary} />
-            <Text style={styles.preferenceText}>Shortest Distance (Default)</Text>
-          </View>
-        
+        {renderRoutingPreferenceControls()}
       </View>
 
       <View style={styles.footer}>

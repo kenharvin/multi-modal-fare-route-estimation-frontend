@@ -187,6 +187,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   
 
   const isMock = routeResult?.source === 'mock';
+  const routingPreferenceLabel = preferences?.preferShortest ? 'Shortest Distance' : 'Fastest ETA';
 
   const legColors = LEG_COLORS;
   const legs = Array.isArray(routeResult?.legs) ? routeResult.legs : [];
@@ -1001,6 +1002,16 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         </View>
 
         <View style={styles.detailsSection}>
+          <View style={styles.detailRow}>
+            <MaterialCommunityIcons
+              name={preferences?.preferShortest ? 'map-marker-distance' : 'clock-fast'}
+              size={18}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.detailLabel}>Routing Preference:</Text>
+            <Text style={styles.detailValue}>{routingPreferenceLabel}</Text>
+          </View>
+
           <View style={styles.detailRow}>
             <MaterialCommunityIcons name="fuel" size={18} color={colors.textSecondary} />
             <Text style={styles.detailLabel}>Fuel Consumption:</Text>

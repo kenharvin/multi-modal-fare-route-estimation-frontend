@@ -231,6 +231,44 @@ export const createPrivateVehicleScreenStyles = (colors: ThemeColors) =>
       flexShrink: 1,
       flexWrap: 'wrap',
     },
+    routePreferenceRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      marginTop: spacing.xs,
+    },
+    routePreferenceButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.md,
+      borderRadius: borderRadius.xl,
+      borderWidth: 2,
+      borderColor: colors.gray5,
+      backgroundColor: colors.gray7,
+    },
+    routePreferenceButtonActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryLight,
+    },
+    routePreferenceLabel: {
+      marginLeft: spacing.xs,
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+      fontWeight: '500',
+      textAlign: 'center',
+    },
+    routePreferenceLabelActive: {
+      color: colors.textPrimary,
+      fontWeight: '700',
+    },
+    routePreferenceHint: {
+      marginTop: spacing.sm,
+      fontSize: fontSize.sm,
+      color: colors.textSecondary,
+      textAlign: 'center',
+    },
     footer: {
       padding: spacing.lg,
       paddingBottom: spacing.xxl
