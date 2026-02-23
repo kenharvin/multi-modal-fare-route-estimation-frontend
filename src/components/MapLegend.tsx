@@ -10,6 +10,7 @@ interface MapLegendProps {
   showTransportTypes?: boolean;
   showTransferLegend?: boolean;
   position?: 'top-right' | 'top-center' | 'bottom-left';
+  compactPinsOnly?: boolean;
 }
 
 const MapLegend: React.FC<MapLegendProps> = ({
@@ -17,6 +18,7 @@ const MapLegend: React.FC<MapLegendProps> = ({
   showTransportTypes = true,
   showTransferLegend = true,
   position = 'bottom-left',
+  compactPinsOnly = false,
 }) => {
   const { colors } = useThemeMode();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -36,6 +38,21 @@ const MapLegend: React.FC<MapLegendProps> = ({
     TransportType.UV_EXPRESS,
     TransportType.TRAIN
   ];
+
+  if (compactPinsOnly && showPinLegend) {
+    return (
+      <View style={[styles.compactPinLegend, containerPositionStyle]}>
+        <View style={styles.legendItem}>
+          <View style={[styles.pinDot, { backgroundColor: '#27ae60' }]} />
+          <Text style={styles.label}>Origin</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.pinDot, { backgroundColor: '#e74c3c' }]} />
+          <Text style={styles.label}>Destination</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, containerPositionStyle]}>
@@ -123,6 +140,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   positionBottomLeft: {
     bottom: 16,
     left: 16,
+  },
+  compactPinLegend: {
+    position: 'absolute',
+    zIndex: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
   title: {
     fontSize: 12,

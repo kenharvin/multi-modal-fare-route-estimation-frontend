@@ -1,13 +1,12 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { StyleSheet, View, TouchableOpacity, Text, Platform } from 'react-native';
+import { View, TouchableOpacity, Text, Platform } from 'react-native';
 import { Location, Stopover, Route, RouteSegment, TransportType } from '@/types';
 import { getTransportColor } from '@/utils/transportUtils';
-import { type ThemeColors } from '@/utils/theme';
+import { createMapViewComponentStyles } from '@/styles/components/mapViewComponent.styles';
 import { useThemeMode } from '@context/ThemeContext';
 import MapLegend from './MapLegend';
 import { getPreviewPolyline, getCoverageBoundaries, type ModeCoverageBoundaries } from '@/services/api';
 import { reverseGeocodePoi } from '@/services/api';
-import { Ionicons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 
 // Web map imports
@@ -90,6 +89,9 @@ interface MapViewComponentProps {
     title: string;
     subtitle?: string;
     icon?: string;
+    label?: string;
+    popupTitle?: string;
+    color?: string;
   }[];
 }
 
@@ -108,13 +110,14 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   autoSelectMode = null,
   showRoute = false,
   showTransferMarkers = true,
+  fitBoundsPadding,
   fitBoundsMaxZoom,
   boundaryMode = 'none',
   hideSelectionControls = false,
   instructionMarkers = []
 }) => {
   const { colors, isDark } = useThemeMode();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createMapViewComponentStyles(colors), [colors]);
   const effectivePolylineColor = polylineColor || colors.primary;
 
   // Dark-mode basemap: keep it dark, but ensure roads stay visible.
@@ -134,21 +137,14 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
     publicOuter: [],
     privateOuter: []
   });
-  const [legendVisible, setLegendVisible] = useState<boolean>(
-    Platform.OS === 'web' || !!(onOriginSelect || onDestinationSelect)
-  );
   const showPinLegend = !!(onOriginSelect || onDestinationSelect);
-  const showTransportLegend = !!(route && route.segments.length > 0);
-  const canShowLegend = showPinLegend || showTransportLegend;
-  const legendPosition: 'top-right' | 'top-center' = showPinLegend && !showTransportLegend
-    ? 'top-right'
-    : 'top-center';
+  const legendPosition: 'top-center' = 'top-center';
 
   const fitPadding = {
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0
+    top: Number.isFinite(Number(fitBoundsPadding?.top)) ? Math.max(0, Number(fitBoundsPadding?.top)) : 0,
+    right: Number.isFinite(Number(fitBoundsPadding?.right)) ? Math.max(0, Number(fitBoundsPadding?.right)) : 0,
+    bottom: Number.isFinite(Number(fitBoundsPadding?.bottom)) ? Math.max(0, Number(fitBoundsPadding?.bottom)) : 0,
+    left: Number.isFinite(Number(fitBoundsPadding?.left)) ? Math.max(0, Number(fitBoundsPadding?.left)) : 0
   };
   const fitMaxZoom = Math.max(1, Math.min(20, Number(fitBoundsMaxZoom ?? 20)));
   // Tighter fit: allow highest zoom (least zoomed out)
@@ -718,11 +714,11 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       makeTransferIcon = null;
     }
 
-    let makeInstructionIcon: ((n: number) => any) | null = null;
+    let makeInstructionIcon: ((label: string, color?: string) => any) | null = null;
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const L = require('leaflet');
-      makeInstructionIcon = (n: number) => {
+      makeInstructionIcon = (label: string, color?: string) => {
         return L.divIcon({
           className: '',
           html: `
@@ -730,7 +726,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
               width: 24px;
               height: 24px;
               border-radius: 12px;
-              background: #f39c12;
+              background: ${color || '#f39c12'};
               border: 2px solid #fff;
               color: #fff;
               display: flex;
@@ -740,7 +736,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
               font-weight: 800;
               box-shadow: 0 2px 6px rgba(0,0,0,0.35);
               line-height: 1;
-            ">${n}</div>
+            ">${label}</div>
           `,
           iconSize: [24, 24],
           iconAnchor: [12, 12]
@@ -913,13 +909,13 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
               <LeafletMarker
                 key={`instruction-${m.stepNumber}-${m.title}`}
                 position={[m.coordinate.latitude, m.coordinate.longitude]}
-                icon={makeInstructionIcon ? makeInstructionIcon(m.stepNumber) : undefined}
+                icon={makeInstructionIcon ? makeInstructionIcon(String(m.label || m.stepNumber), m.color) : undefined}
               >
                 {Popup && (
                   <Popup>
                     <div style={{ minWidth: 180 }}>
                       <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                        Step {m.stepNumber}
+                        {m.popupTitle || `Step ${m.stepNumber}`}
                       </div>
                       <div style={{ marginBottom: 6 }}>{m.title}</div>
                       {!!m.subtitle && <div>{m.subtitle}</div>}
@@ -1100,25 +1096,12 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
           </MapContainer>
         </div>
 
-        {/* Legend toggle + legend for web Leaflet */}
-        {canShowLegend && (
-          <View style={styles.legendToggleWrap}>
-            <TouchableOpacity
-              style={styles.legendToggleButton}
-              onPress={() => setLegendVisible((v) => !v)}
-              activeOpacity={0.8}
-            >
-              <Ionicons name={legendVisible ? 'close' : 'information-circle-outline'} size={16} color={colors.textPrimary} />
-              <Text style={styles.legendToggleText}>{legendVisible ? 'Hide legend' : 'Show legend'}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {legendVisible && (
+        {showPinLegend && (
           <MapLegend
             showPinLegend={showPinLegend}
-            showTransportTypes={showTransportLegend}
-            showTransferLegend={showTransportLegend}
+            showTransportTypes={false}
+            showTransferLegend={false}
+            compactPinsOnly={true}
             position={legendPosition}
           />
         )}
@@ -1233,9 +1216,9 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
           lat: m.coordinate.latitude,
           lon: m.coordinate.longitude,
           kind: 'instruction',
-          label: `${m.stepNumber}`,
-          color: '#f39c12',
-          popupTitle: `Step ${m.stepNumber}`,
+          label: String(m.label || m.stepNumber),
+          color: m.color || '#f39c12',
+          popupTitle: m.popupTitle || `Step ${m.stepNumber}`,
           popupLines: [m.title, ...(m.subtitle ? [m.subtitle] : [])],
         });
       }
@@ -1663,20 +1646,6 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         domStorageEnabled
       />
 
-      {/* Legend toggle (hidden by default; tap to show) */}
-      {canShowLegend && (
-        <View style={styles.legendToggleWrap}>
-          <TouchableOpacity
-            style={styles.legendToggleButton}
-            onPress={() => setLegendVisible(v => !v)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name={legendVisible ? 'close' : 'information-circle-outline'} size={16} color={colors.textPrimary} />
-            <Text style={styles.legendToggleText}>{legendVisible ? 'Hide legend' : 'Show legend'}</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       {!hideSelectionControls && (onOriginSelect || onDestinationSelect || onStopoverSelect) && (
         <View style={styles.controls}>
           {onOriginSelect && (
@@ -1756,7 +1725,7 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
       {(selectingOrigin || selectingDestination || selectingStopover) && (
         <View style={styles.instructionBanner}>
           <Text style={styles.instructionText}>
-            Tap on the map to select {selectingOrigin ? 'origin' : selectingDestination ? 'destination' : 'stopover'}
+            Please pin {selectingOrigin ? 'origin' : selectingDestination ? 'destination' : 'stopover'} on the map
           </Text>
         </View>
       )}
@@ -1767,287 +1736,18 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         </View>
       )}
 
-      {/* Show legend only when toggled */}
-      {legendVisible && (
+      {showPinLegend && (
         <MapLegend
           showPinLegend={showPinLegend}
-          showTransportTypes={showTransportLegend}
-          showTransferLegend={showTransportLegend}
+          showTransportTypes={false}
+          showTransferLegend={false}
+          compactPinsOnly={true}
           position={legendPosition}
         />
       )}
     </View>
   );
 };
-
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: {
-    flex: 1,
-    position: 'relative'
-  },
-  map: {
-    ...StyleSheet.absoluteFillObject
-  },
-  controls: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    flexDirection: 'column',
-    gap: 8
-  },
-  controlButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-      },
-      android: {
-        elevation: 5,
-      },
-      web: {
-        boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
-      },
-    }),
-    marginBottom: 8
-  },
-  segmentEndpointBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-      },
-      android: {
-        elevation: 4,
-      },
-      web: {
-        boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
-      },
-    }),
-  },
-  controlButtonActive: {
-    backgroundColor: colors.primary
-  },
-  controlText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginLeft: 4
-  },
-  controlTextActive: {
-    color: '#fff'
-  },
-  instructionBanner: {
-    position: 'absolute',
-    bottom: 16,
-    left: 16,
-    right: 16,
-    backgroundColor: colors.primary,
-    padding: 12,
-    borderRadius: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-      },
-      android: {
-        elevation: 5,
-      },
-      web: {
-        boxShadow: '0 2px 4px rgba(0,0,0,0.25)',
-      },
-    }),
-  },
-  legendToggleWrap: {
-    position: 'absolute',
-    left: 12,
-    top: 12,
-    zIndex: 20
-  },
-  legendToggleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: 18,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 3
-      },
-      android: {
-        elevation: 4
-      },
-      web: {
-        boxShadow: '0 2px 6px rgba(0,0,0,0.25)'
-      }
-    })
-  },
-  legendToggleText: {
-    marginLeft: 6,
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  instructionText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center'
-  },
-  resolvingBanner: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    right: 16,
-    alignSelf: 'center',
-    backgroundColor: colors.white,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 4,
-      },
-      web: {
-        boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-      },
-    }),
-  },
-  resolvingText: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  webMapContainer: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  webMapPlaceholder: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  webMapText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
-    marginTop: 16,
-  },
-  webMapSubtext: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  webLocationText: {
-    fontSize: 14,
-    color: colors.textPrimary,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  transferDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.textPrimary,
-    borderWidth: 2,
-    borderColor: '#fff'
-  },
-  transferBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-      },
-      android: {
-        elevation: 3,
-      },
-      web: {
-        boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
-      },
-    }),
-  },
-  transferBadgeAlight: {
-    backgroundColor: '#2980b9'
-  },
-  transferBadgeBoard: {
-    backgroundColor: '#27ae60'
-  },
-  transferBadgeText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 11,
-  }
-  ,
-  transferBadgeTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2
-  },
-  transferBadgeSubText: {
-    color: '#fff',
-    fontWeight: '900',
-    fontSize: 9,
-    marginTop: -2,
-    opacity: 0.95
-  },
-  transferCallout: {
-    minWidth: 200,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-  },
-  transferCalloutTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.textPrimary,
-    marginBottom: 4
-  },
-  transferCalloutRow: {
-    fontSize: 12,
-    color: colors.textPrimary,
-    marginBottom: 2
-  }
-});
 
 export default MapViewComponent;
 

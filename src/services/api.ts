@@ -7,6 +7,7 @@ import {
   DrivingPreferences,
   Stopover,
   PrivateVehicleRoute,
+  PrivateDirectionStep,
   ApiResponse,
   TransportType
 } from '@/types';
@@ -557,8 +558,6 @@ export const calculatePrivateVehicleRoute = async (
         },
         stopovers: stopoverPayload.length ? stopoverPayload : undefined,
         preferences: {
-          avoidTolls: !!preferences?.avoidTolls,
-          avoidHighways: !!preferences?.avoidHighways,
           preferShortest: !!preferences?.preferShortest
         }
       };
@@ -568,6 +567,16 @@ export const calculatePrivateVehicleRoute = async (
       const payload = buildPayload(o, d, stopoverLocs);
       const response = await apiClient.post('/private-vehicle/route', payload);
       const data = response.data || {};
+
+      const turnIcons = new Set([
+        'arrow-top-right',
+        'arrow-right-bold',
+        'arrow-bottom-right',
+        'arrow-top-left',
+        'arrow-left-bold',
+        'arrow-bottom-left',
+        'backup-restore',
+      ]);
 
       const geometry = Array.isArray(data.geometry_coords)
         ? data.geometry_coords
@@ -582,10 +591,33 @@ export const calculatePrivateVehicleRoute = async (
       const estimatedTimeMin =
         typeof data.estimated_time_min === 'number' ? data.estimated_time_min : Number(data.estimated_time_min || 0);
 
+      const directionSteps: PrivateDirectionStep[] = Array.isArray(data?.maneuver_steps)
+        ? data.maneuver_steps
+            .map((step: any, idx: number) => {
+              const lat = Number(step?.lat);
+              const lon = Number(step?.lon);
+              const hasPoint = Number.isFinite(lat) && Number.isFinite(lon);
+              const instruction = String(step?.instruction || '').trim();
+              const stepType = String(step?.step_type || '').trim().toLowerCase();
+              if (!instruction) return null;
+              return {
+                id: `${String(step?.id || 'step')}-${idx}`,
+                icon: String(step?.icon || 'arrow-up-bold'),
+                instruction,
+                stepType,
+                distanceText: step?.distance_text ? String(step.distance_text) : undefined,
+                turnPoint: hasPoint ? { latitude: lat, longitude: lon } : undefined,
+              } as PrivateDirectionStep;
+            })
+            .filter((x: PrivateDirectionStep | null): x is PrivateDirectionStep => !!x)
+            .filter((x) => x.stepType === 'turn' || x.stepType === 'uturn' || turnIcons.has(x.icon))
+        : [];
+
       return {
         distanceKm,
         estimatedTimeMin,
-        geometry: geometry && geometry.length >= 2 ? geometry : undefined
+        geometry: geometry && geometry.length >= 2 ? geometry : undefined,
+        directionSteps: directionSteps.length ? directionSteps : undefined,
       };
     };
 
@@ -626,6 +658,16 @@ export const calculatePrivateVehicleRoute = async (
           const o = points[i];
           const d = points[i + 1];
           const r = await requestRoute(o, d);
+          const legDirectionSteps = (r.directionSteps || []).map((step, stepIdx) => {
+            const rawId = String(step.id || `step-${stepIdx}`);
+            const normalizedId = /^leg-\d+-/i.test(rawId)
+              ? rawId.replace(/^leg-\d+-/i, `leg-${i}-`)
+              : `leg-${i}-${rawId}`;
+            return {
+              ...step,
+              id: `${normalizedId}-${stepIdx}`,
+            };
+          });
           const dist = Number(r.distanceKm || 0);
           const timeMin = Number(r.estimatedTimeMin || 0);
           const fuelConsumptionL = dist / safeEfficiency;
@@ -638,6 +680,7 @@ export const calculatePrivateVehicleRoute = async (
             distanceKm: dist,
             estimatedTimeMin: Math.round(timeMin),
             geometry: r.geometry,
+            directionSteps: legDirectionSteps,
             fuelConsumptionL,
             fuelCost
           });
@@ -646,6 +689,7 @@ export const calculatePrivateVehicleRoute = async (
         const totalDistance = legs.reduce((acc, l) => acc + (l.distanceKm || 0), 0);
         const totalTimeMin = legs.reduce((acc, l) => acc + (l.estimatedTimeMin || 0), 0);
         const geometry = stitchGeometries(legs.map((l) => l.geometry));
+        const directionSteps = legs.flatMap((l) => l.directionSteps || []);
 
         const fuelConsumption = totalDistance / safeEfficiency;
         const fuelCost = fuelConsumption * (fuelPrice || 0);
@@ -659,8 +703,8 @@ export const calculatePrivateVehicleRoute = async (
           fuelConsumption,
           fuelCost,
           estimatedTime: Math.round(totalTimeMin),
-          avoidTolls: !!preferences?.avoidTolls,
           geometry,
+          directionSteps: directionSteps.length ? directionSteps : undefined,
           legs,
           source: 'backend'
         };
@@ -686,8 +730,8 @@ export const calculatePrivateVehicleRoute = async (
       fuelConsumption,
       fuelCost,
       estimatedTime: Math.round(estimatedTimeMin),
-      avoidTolls: !!preferences?.avoidTolls,
       geometry: single.geometry,
+      directionSteps: single.directionSteps,
       legs: [
         {
           id: `${Date.now()}-0`,
@@ -696,6 +740,7 @@ export const calculatePrivateVehicleRoute = async (
           distanceKm,
           estimatedTimeMin: Math.round(estimatedTimeMin),
           geometry: single.geometry,
+          directionSteps: single.directionSteps,
           fuelConsumptionL: fuelConsumption,
           fuelCost
         }
@@ -793,7 +838,8 @@ export const reverseGeocodePoi = async (
   const fallbackName = `Location at ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
   try {
     const response = await apiClient.get(
-      `/private-vehicle/poi/reverse?lat=${encodeURIComponent(String(latitude))}&lon=${encodeURIComponent(String(longitude))}`
+      `/private-vehicle/poi/reverse?lat=${encodeURIComponent(String(latitude))}&lon=${encodeURIComponent(String(longitude))}`,
+      { timeout: 5000 }
     );
     const name = String(response?.data?.name || '').trim() || fallbackName;
     const address = String(response?.data?.address || '').trim();
@@ -935,7 +981,6 @@ const getMockPrivateVehicleRoute = (
     fuelConsumption,
     fuelCost,
     estimatedTime: totalTimeMin || 60,
-    avoidTolls: false,
     legs,
     fuzzyScore: 0.92
   };

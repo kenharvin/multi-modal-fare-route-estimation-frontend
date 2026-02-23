@@ -122,9 +122,20 @@ export interface PrivateVehicleLeg {
   estimatedTimeMin: number;
   /** Road-following polyline for this leg (from backend geometry_coords). */
   geometry?: Coordinates[];
+  /** Optional turn-by-turn steps for this leg from backend. */
+  directionSteps?: PrivateDirectionStep[];
   /** Client-computed fuel metrics for this leg. */
   fuelConsumptionL?: number;
   fuelCost?: number;
+}
+
+export interface PrivateDirectionStep {
+  id: string;
+  icon: string;
+  instruction: string;
+  stepType?: string;
+  distanceText?: string;
+  turnPoint?: Coordinates;
 }
 
 // Private vehicle route
@@ -141,6 +152,8 @@ export interface PrivateVehicleRoute {
   geometry?: Coordinates[];
   /** Optional breakdown of the journey by legs (origin → stopovers → destination). */
   legs?: PrivateVehicleLeg[];
+  /** Optional backend-provided turn-by-turn steps for the full route. */
+  directionSteps?: PrivateDirectionStep[];
   fuzzyScore?: number;
   source?: 'backend' | 'mock';
   errorMessage?: string;

@@ -29,6 +29,7 @@ const resolveApiBaseUrl = (): string => {
 export const API_BASE_URL = resolveApiBaseUrl();
 export const ROUTE_TIMEOUT_MS = Number(process.env.EXPO_PUBLIC_ROUTE_TIMEOUT_MS || 180000); // 3 minutes default
 const API_KEY = process.env.EXPO_PUBLIC_API_KEY;
+const ENABLE_API_DEBUG = __DEV__ || String(process.env.EXPO_PUBLIC_DEBUG_NETWORK || '').toLowerCase() === 'true';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -39,34 +40,66 @@ export const apiClient = axios.create({
   }
 });
 
+const toFriendlyApiMessage = (err: any): string => {
+  const status = Number(err?.response?.status || 0);
+  const code = String(err?.code || '').toUpperCase();
+  const detailRaw = err?.response?.data?.detail || err?.response?.data?.error || err?.response?.data?.message;
+  const detail = String(detailRaw || '').toLowerCase();
+
+  if (status === 401 || status === 403) {
+    return 'Request was not authorized. Please try again in a moment.';
+  }
+
+  if (status === 404) {
+    return 'No route found for the selected locations. Try nearby points.';
+  }
+
+  if (status === 429) {
+    return 'Too many requests right now. Please wait a bit and try again.';
+  }
+
+  if (status >= 500) {
+    return 'The server is temporarily unavailable. Please try again shortly.';
+  }
+
+  if (code === 'ECONNABORTED' || detail.includes('timeout') || detail.includes('timed out')) {
+    return 'Request timed out. Check your connection and try again.';
+  }
+
+  if (code === 'ERR_NETWORK') {
+    return 'Unable to connect to the server. Check your internet connection.';
+  }
+
+  if (detail.includes('no route')) {
+    return 'No route found for the selected locations. Try nearby points.';
+  }
+
+  if (detail.includes('could not resolve poi') || detail.includes('could not resolve')) {
+    return 'Some place names could not be found. Try selecting a location from the map.';
+  }
+
+  return 'Something went wrong while processing your request. Please try again.';
+};
+
 export const formatAxiosError = (err: any): string => {
   try {
-    const isAxios = !!err?.isAxiosError;
-    const status = err?.response?.status;
-    const detail = err?.response?.data?.detail || err?.response?.data?.error || err?.response?.data?.message;
-    const code = err?.code;
-    const msg = err?.message;
-    const url = err?.config?.url;
-    const baseURL = err?.config?.baseURL;
-
-    const parts: string[] = [];
-    if (isAxios) parts.push('AxiosError');
-    if (status) parts.push(`HTTP ${status}`);
-    if (code) parts.push(String(code));
-    if (msg) parts.push(String(msg));
-    if (detail) parts.push(`detail=${String(detail)}`);
-    if (baseURL || url) parts.push(`at ${(baseURL || API_BASE_URL) + (url || '')}`);
-    return parts.join(' | ') || String(err);
+    if (err?.isAxiosError) {
+      return toFriendlyApiMessage(err);
+    }
+    const msg = String(err?.message || err || '').trim();
+    return msg || 'Something went wrong while processing your request. Please try again.';
   } catch {
-    return String(err);
+    return 'Something went wrong while processing your request. Please try again.';
   }
 };
 
 // Add request interceptor for logging
 apiClient.interceptors.request.use(
   (config) => {
-    console.log('API Request:', config.method?.toUpperCase(), config.url);
-    console.log('Base URL:', API_BASE_URL);
+    if (ENABLE_API_DEBUG) {
+      console.log('API Request:', config.method?.toUpperCase(), config.url);
+      console.log('Base URL:', API_BASE_URL);
+    }
 
     // Attach API key if configured (no login required).
     if (API_KEY) {
@@ -83,16 +116,20 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error('API Error:', error.response?.data || error.message);
-    console.error('Error details:', {
-      message: error.message,
-      code: error.code,
-      config: {
-        url: error.config?.url,
-        baseURL: error.config?.baseURL,
-        method: error.config?.method
-      }
-    });
+    if (ENABLE_API_DEBUG) {
+      console.error('API Error:', error.response?.data || error.message);
+      console.error('Error details:', {
+        message: error.message,
+        code: error.code,
+        config: {
+          url: error.config?.url,
+          baseURL: error.config?.baseURL,
+          method: error.config?.method
+        }
+      });
+    } else {
+      console.error('API Error:', formatAxiosError(error));
+    }
     return Promise.reject(error);
   }
 );

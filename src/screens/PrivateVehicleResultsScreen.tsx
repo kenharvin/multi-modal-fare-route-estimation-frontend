@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Alert, Animated, Dimensions, Pressable, PanResponder } from 'react-native';
+import { View, Text, Animated, Dimensions, Pressable, PanResponder } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
@@ -12,7 +12,7 @@ import { reverseGeocodePoi } from '@services/api';
 import MapViewComponent from '@components/MapViewComponent';
 import LogoLoadingScreen from '@components/LogoLoadingScreen';
 import { formatArrivalTimeRange, formatTimeRange } from '@/utils/helpers';
-import { borderRadius, fontSize, shadows, spacing, type ThemeColors } from '@/utils/theme';
+import { createPrivateVehicleResultsScreenStyles } from '@/styles/screens/privateVehicleResultsScreen.styles';
 import { useThemeMode } from '@context/ThemeContext';
 type PrivateVehicleResultsRouteProp = RouteProp<RootStackParamList, 'PrivateVehicleResults'>;
 type PrivateVehicleResultsNavigationProp = StackNavigationProp<RootStackParamList, 'PrivateVehicleResults'>;
@@ -21,13 +21,16 @@ type DirectionStep = {
   id: string;
   icon: string;
   instruction: string;
+  stepType?: string;
   distanceText?: string;
   turnPoint?: { latitude: number; longitude: number };
 };
 
+const LEG_COLORS = ['#1e88e5', '#8e24aa', '#43a047', '#fb8c00'];
+
 const PrivateVehicleResultsScreen: React.FC = () => {
   const { colors } = useThemeMode();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createPrivateVehicleResultsScreenStyles(colors), [colors]);
 
   const navigation = useNavigation<PrivateVehicleResultsNavigationProp>();
   const route = useRoute<PrivateVehicleResultsRouteProp>();
@@ -35,8 +38,11 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const { isLoading, setIsLoading, setError } = useApp();
   
   const [routeResult, setRouteResult] = useState<PrivateVehicleRoute | null>(null);
+  const [routeErrorMessage, setRouteErrorMessage] = useState<string | null>(null);
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
   const [turnPointNames, setTurnPointNames] = useState<Record<string, string>>({});
+  const [isResolvingDirectionDetails, setIsResolvingDirectionDetails] = useState<boolean>(false);
+  const reverseGeocodeCacheRef = useRef<Record<string, string>>({});
 
   const sheetProgress = useRef(new Animated.Value(0)).current; // 0=collapsed, 1=expanded
   const isExpandedRef = useRef<boolean>(false);
@@ -144,6 +150,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const calculateRoute = useCallback(async () => {
     try {
       setIsLoading(true);
+      setRouteErrorMessage(null);
       const result = await calculatePrivateVehicleRoute(
         origin,
         destination,
@@ -156,9 +163,10 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     } catch (err: any) {
       const msg = typeof err?.message === 'string' && err.message.trim().length > 0
         ? err.message
-        : 'Failed to calculate route. Please try again.';
+        : 'No route found for the selected locations. Please try nearby points.';
+      setRouteResult(null);
+      setRouteErrorMessage(msg);
       setError(msg);
-      Alert.alert('Error', msg);
     } finally {
       setIsLoading(false);
     }
@@ -172,7 +180,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
 
   const isMock = routeResult?.source === 'mock';
 
-  const legColors = ['#1e88e5', '#8e24aa', '#43a047', '#fb8c00'];
+  const legColors = LEG_COLORS;
   const legs = Array.isArray(routeResult?.legs) ? routeResult.legs : [];
   const hasLegBreakdown = legs.length >= 2;
 
@@ -246,6 +254,34 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const directionSteps = useMemo(() => {
     if (!routeResult) return [] as DirectionStep[];
 
+    const turnIcons = new Set([
+      'arrow-top-right',
+      'arrow-right-bold',
+      'arrow-bottom-right',
+      'arrow-top-left',
+      'arrow-left-bold',
+      'arrow-bottom-left',
+      'backup-restore',
+    ]);
+
+    const isTurnStep = (step: DirectionStep) => {
+      const stepType = String(step.stepType || '').toLowerCase();
+      return stepType === 'turn' || stepType === 'uturn' || turnIcons.has(step.icon);
+    };
+
+    if (Array.isArray(routeResult.directionSteps) && routeResult.directionSteps.length > 0) {
+      return routeResult.directionSteps
+        .map((step, idx) => ({
+        id: `${step.id || 'backend-step'}-${idx}`,
+        icon: step.icon || 'arrow-up-bold',
+        instruction: step.instruction || 'Continue straight',
+        stepType: step.stepType,
+        distanceText: step.distanceText,
+        turnPoint: step.turnPoint,
+        }))
+        .filter(isTurnStep);
+    }
+
     const formatDistance = (meters: number) => {
       if (!Number.isFinite(meters) || meters <= 0) return '0 m';
       if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
@@ -289,8 +325,8 @@ const PrivateVehicleResultsScreen: React.FC = () => {
 
     const classifyTurn = (delta: number): { icon: string; text: string } | null => {
       const absDelta = Math.abs(delta);
-      if (absDelta < 30) return null;
-      if (absDelta >= 165) return { icon: 'backup-restore', text: 'Make a U-turn' };
+      if (absDelta < 22) return null;
+      if (absDelta >= 150) return { icon: 'backup-restore', text: 'Make a U-turn' };
       if (delta > 0) {
         if (absDelta < 60) return { icon: 'arrow-top-right', text: 'Turn slight right' };
         if (absDelta < 120) return { icon: 'arrow-right-bold', text: 'Turn right' };
@@ -303,7 +339,6 @@ const PrivateVehicleResultsScreen: React.FC = () => {
 
     const buildLegDirectionSteps = (
       coords: { latitude: number; longitude: number }[],
-      destinationName: string,
       legLabel: string,
     ): DirectionStep[] => {
       if (!Array.isArray(coords) || coords.length < 2) {
@@ -311,57 +346,36 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       }
 
       const steps: DirectionStep[] = [];
-      steps.push({
-        id: `${legLabel}-start`,
-        icon: 'navigation-variant',
-        instruction: `${legLabel}: Start on ${destinationName}`,
-        turnPoint: coords[0],
-      });
-
       let sinceLastTurnM = 0;
+      let sinceLastStepM = 0;
+      const MIN_STEP_GAP_M = 45;
+
       for (let i = 1; i < coords.length - 1; i++) {
         const segDist = haversineM(coords[i - 1], coords[i]);
         sinceLastTurnM += segDist;
+        sinceLastStepM += segDist;
 
         const prevBearing = bearingDeg(coords[i - 1], coords[i]);
         const nextBearing = bearingDeg(coords[i], coords[i + 1]);
         const turnDelta = normalizeTurnDelta(nextBearing, prevBearing);
         const maneuver = classifyTurn(turnDelta);
-        if (!maneuver || sinceLastTurnM < 80) {
+        const isUturn = maneuver?.icon === 'backup-restore';
+        const requiredGap = isUturn ? 20 : MIN_STEP_GAP_M;
+
+        if (maneuver && sinceLastTurnM >= requiredGap) {
+          steps.push({
+            id: `${legLabel}-turn-${i}`,
+            icon: maneuver.icon,
+            instruction: maneuver.text,
+            stepType: maneuver.icon === 'backup-restore' ? 'uturn' : 'turn',
+            distanceText: `${formatDistance(sinceLastStepM)}`,
+            turnPoint: coords[i],
+          });
+          sinceLastTurnM = 0;
+          sinceLastStepM = 0;
           continue;
         }
-
-        // Use the street name at the next turn point for clarity
-        let nextStreetName = undefined;
-        if (turnPointNames) {
-          const nextCoord = coords[i + 1];
-          if (nextCoord) {
-            nextStreetName = turnPointNames[`${nextCoord.latitude},${nextCoord.longitude}`];
-          }
-        }
-
-        
-
-        steps.push({
-          id: `${legLabel}-turn-${i}`,
-          icon: maneuver.icon,
-          instruction: nextStreetName
-            ? `${maneuver.text} onto ${nextStreetName}`
-            : `${maneuver.text}`,
-          distanceText: `${formatDistance(sinceLastTurnM)}`,
-          turnPoint: coords[i],
-        });
-        sinceLastTurnM = 0;
       }
-
-      sinceLastTurnM += haversineM(coords[coords.length - 2], coords[coords.length - 1]);
-      steps.push({
-        id: `${legLabel}-arrive`,
-        icon: 'flag-checkered',
-        instruction: `Arrive at ${destinationName}`,
-        distanceText: sinceLastTurnM > 0 ? `In ${formatDistance(sinceLastTurnM)}` : undefined,
-        turnPoint: coords[coords.length - 1],
-      });
 
       return steps;
     };
@@ -383,41 +397,77 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       const fallbackCoords = [leg.origin?.coordinates, leg.destination?.coordinates].filter(isValidPoint);
       const coords = coordsFromGeometry.length >= 2 ? coordsFromGeometry : fallbackCoords;
 
-      const destinationName = leg.destination?.name || (index === legsToUse.length - 1 ? 'Destination' : `Stopover ${index + 1}`);
       const legLabel = legsToUse.length > 1 ? `Leg ${index + 1}` : 'Route';
-      steps.push(...buildLegDirectionSteps(coords, destinationName, legLabel));
+      steps.push(...buildLegDirectionSteps(coords, legLabel));
     });
 
-    return steps;
-  }, [routeResult, turnPointNames]);
+    return steps.filter(isTurnStep);
+  }, [routeResult]);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadTurnPointNames = async () => {
+      const coordKey = (lat: number, lon: number) => `${lat.toFixed(5)},${lon.toFixed(5)}`;
       const pending = directionSteps.filter(
         (step) =>
           !!step.turnPoint &&
           !turnPointNames[step.id],
       );
-      if (pending.length === 0) return;
+      if (pending.length === 0) {
+        setIsResolvingDirectionDetails(false);
+        return;
+      }
 
       const updates: Record<string, string> = {};
-      for (const step of pending.slice(0, 16)) {
+
+      const unresolvedByCoord: Record<string, { lat: number; lon: number; stepIds: string[] }> = {};
+      for (const step of pending.slice(0, 24)) {
         if (!step.turnPoint) continue;
-        try {
-          const resolved = await reverseGeocodePoi(step.turnPoint.latitude, step.turnPoint.longitude);
-          const label = String(resolved?.name || resolved?.address || '').trim();
-          if (label) {
-            updates[step.id] = label;
-          }
-        } catch {
+        const key = coordKey(step.turnPoint.latitude, step.turnPoint.longitude);
+        const cached = reverseGeocodeCacheRef.current[key];
+        if (cached) {
+          updates[step.id] = cached;
           continue;
+        }
+        if (!unresolvedByCoord[key]) {
+          unresolvedByCoord[key] = {
+            lat: step.turnPoint.latitude,
+            lon: step.turnPoint.longitude,
+            stepIds: [],
+          };
+        }
+        unresolvedByCoord[key].stepIds.push(step.id);
+      }
+
+      const unresolvedEntries = Object.entries(unresolvedByCoord).slice(0, 8);
+      if (unresolvedEntries.length > 0) {
+        setIsResolvingDirectionDetails(true);
+        await Promise.allSettled(
+          unresolvedEntries.map(async ([key, val]) => {
+            const resolved = await reverseGeocodePoi(val.lat, val.lon);
+            const label = String(resolved?.name || resolved?.address || '').trim();
+            if (label) {
+              reverseGeocodeCacheRef.current[key] = label;
+            }
+          })
+        );
+      }
+
+      for (const [key, val] of unresolvedEntries) {
+        const label = reverseGeocodeCacheRef.current[key];
+        if (!label) continue;
+        for (const id of val.stepIds) {
+          updates[id] = label;
         }
       }
 
       if (!cancelled && Object.keys(updates).length > 0) {
         setTurnPointNames((prev) => ({ ...prev, ...updates }));
+      }
+
+      if (!cancelled) {
+        setIsResolvingDirectionDetails(false);
       }
     };
 
@@ -430,20 +480,20 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const directionStepsWithLocationNames = useMemo(
     () =>
       directionSteps.map((step, idx, arr) => {
+        const turnIcons = new Set([
+          'arrow-top-right', 'arrow-right-bold', 'arrow-bottom-right',
+          'arrow-top-left', 'arrow-left-bold', 'arrow-bottom-left',
+          'backup-restore',
+        ]);
+
         // For turn instructions, use the next step's street name if available
-        if (
-          step.icon && [
-            'arrow-top-right', 'arrow-right-bold', 'arrow-bottom-right',
-            'arrow-top-left', 'arrow-left-bold', 'arrow-bottom-left',
-            'backup-restore'
-          ].includes(step.icon)
-        ) {
+        if (step.icon && turnIcons.has(step.icon) && !step.instruction.includes(' onto ')) {
           const nextStep = arr[idx + 1];
           const nextStreetName = nextStep && nextStep.turnPoint ? turnPointNames[nextStep.id] : undefined;
           if (nextStreetName) {
             return {
               ...step,
-              instruction: `${step.instruction.split(' ')[0]} ${step.instruction.split(' ').slice(1).join(' ')} onto ${nextStreetName}`,
+              instruction: `${step.instruction} onto ${nextStreetName}`,
             };
           }
         }
@@ -455,8 +505,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const instructionMarkers = useMemo(() => {
     // Group steps by rounded coordinate to detect overlaps
     const steps = directionStepsWithLocationNames
-      .filter((step) => !!step.turnPoint)
-      .slice(0, 24);
+      .filter((step) => !!step.turnPoint);
 
     // Helper to round coordinates for grouping (about ~1m precision)
     const roundCoord = (c: { latitude: number; longitude: number }) =>
@@ -484,28 +533,157 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       };
     };
 
-    let markerIdx = 0;
+    let markerIdx = 1;
     const markers: {
       coordinate: { latitude: number; longitude: number };
       stepNumber: number;
       title: string;
       subtitle: string;
       icon: string;
+      label?: string;
+      popupTitle?: string;
+      color?: string;
     }[] = [];
-    Object.values(grouped).forEach((group) => {
-      group.forEach((step, idx) => {
-        markers.push({
-          coordinate: offsetCoord(step.turnPoint!, idx, group.length),
-          stepNumber: markerIdx + 1,
-          title: step.distanceText ? `After ${step.distanceText}` : '',
-          subtitle: step.instruction,
-          icon: step.icon,
-        });
-        markerIdx++;
-      });
+
+    const parseLegIndex = (stepId?: string): number | null => {
+      const match = String(stepId || '').match(/leg-(\d+)-/i);
+      if (!match) return null;
+      const idx = Number(match[1]);
+      return Number.isFinite(idx) ? idx : null;
+    };
+
+    const legColorFor = (legIndex: number | null) => {
+      if (legIndex === null || legIndex < 0) return colors.primary;
+      return legColors[legIndex % legColors.length];
+    };
+
+    const turnItems = steps.map((step) => {
+      const legIndex = parseLegIndex(step.id);
+      return {
+        ...step,
+        legIndex,
+        markerColor: legColorFor(legIndex),
+      };
     });
+
+    if (routeResult?.origin?.coordinates && isValidCoord(routeResult.origin.coordinates)) {
+      markers.push({
+        coordinate: routeResult.origin.coordinates,
+        stepNumber: markerIdx,
+        title: 'Start',
+        subtitle: routeResult.origin.name ? `From ${routeResult.origin.name}` : 'From origin',
+        icon: 'navigation-variant',
+        label: 'S',
+        popupTitle: 'Start',
+        color: legColorFor(0),
+      });
+      markerIdx += 1;
+    }
+
+    const nudgeLongitude = (c: { latitude: number; longitude: number }, metersEast: number) => {
+      const earthRadius = 6378137;
+      const dLon = (metersEast / (earthRadius * Math.cos((Math.PI * c.latitude) / 180))) * (180 / Math.PI);
+      return {
+        latitude: c.latitude,
+        longitude: c.longitude + dLon,
+      };
+    };
+
+    const stopoverCount = Array.isArray(routeResult?.stopovers) ? routeResult.stopovers.length : 0;
+    const totalLegs = Math.max(1, Number(routeResult?.legs?.length || stopoverCount + 1));
+
+    const turnsByLeg: Record<number, typeof turnItems> = {};
+    turnItems.forEach((item) => {
+      if (!item.turnPoint) return;
+      if (item.legIndex === null || item.legIndex < 0) return;
+      if (!turnsByLeg[item.legIndex]) turnsByLeg[item.legIndex] = [];
+      turnsByLeg[item.legIndex].push(item);
+    });
+
+    for (let legIdx = 0; legIdx < totalLegs; legIdx += 1) {
+      const legTurns = turnsByLeg[legIdx] || [];
+
+      const groupedTurnItemsByPoint: Record<string, typeof legTurns> = {};
+      legTurns.forEach((item) => {
+        if (!item.turnPoint) return;
+        const key = roundCoord(item.turnPoint);
+        if (!groupedTurnItemsByPoint[key]) groupedTurnItemsByPoint[key] = [];
+        groupedTurnItemsByPoint[key].push(item);
+      });
+
+      legTurns.forEach((item) => {
+        if (!item.turnPoint) return;
+        const key = roundCoord(item.turnPoint);
+        const group = groupedTurnItemsByPoint[key] || [item];
+        const idxInGroup = group.findIndex((x) => x.id === item.id);
+        markers.push({
+          coordinate: offsetCoord(item.turnPoint, idxInGroup < 0 ? 0 : idxInGroup, group.length),
+          stepNumber: markerIdx,
+          title: item.distanceText ? `After ${item.distanceText}` : '',
+          subtitle: item.instruction,
+          icon: item.icon,
+          color: item.markerColor,
+        });
+        markerIdx += 1;
+      });
+
+      if (legIdx < stopoverCount) {
+        const stopover = routeResult?.stopovers?.[legIdx]?.location;
+        if (stopover?.coordinates && isValidCoord(stopover.coordinates)) {
+          const hasMultipleStopovers = stopoverCount >= 2;
+
+          markers.push({
+            coordinate: hasMultipleStopovers ? nudgeLongitude(stopover.coordinates, -7) : stopover.coordinates,
+            stepNumber: markerIdx,
+            title: `Reached stopover ${legIdx + 1}`,
+            subtitle: stopover.name || `Stopover ${legIdx + 1}`,
+            icon: 'map-marker-check',
+            label: hasMultipleStopovers ? `P${legIdx + 1}S` : `P${legIdx + 1}`,
+            popupTitle: `Stopover ${legIdx + 1} start`,
+            color: legColorFor(legIdx),
+          });
+          markerIdx += 1;
+
+          // For 2+ stopovers, add an explicit end/depart marker for each stopover
+          // except the last, which naturally ends with destination.
+          if (hasMultipleStopovers && legIdx < stopoverCount - 1) {
+            markers.push({
+              coordinate: nudgeLongitude(stopover.coordinates, 7),
+              stepNumber: markerIdx,
+              title: `Leave stopover ${legIdx + 1}`,
+              subtitle: `Continue to next leg`,
+              icon: 'map-marker-right',
+              label: `P${legIdx + 1}E`,
+              popupTitle: `Stopover ${legIdx + 1} end`,
+              color: legColorFor(legIdx + 1),
+            });
+            markerIdx += 1;
+          }
+        }
+      }
+    }
+
+    if (routeResult?.destination?.coordinates && isValidCoord(routeResult.destination.coordinates)) {
+      const endLegIndex = Math.max(0, (routeResult?.legs?.length || 1) - 1);
+      markers.push({
+        coordinate: routeResult.destination.coordinates,
+        stepNumber: markerIdx,
+        title: 'Arrive at destination',
+        subtitle: routeResult.destination.name || 'Destination',
+        icon: 'flag-checkered',
+        label: 'E',
+        popupTitle: 'End',
+        color: legColorFor(endLegIndex),
+      });
+    }
+
     return markers;
-  }, [directionStepsWithLocationNames]);
+  }, [colors.primary, directionStepsWithLocationNames, legColors, routeResult]);
+
+  const instructionListItems = useMemo(
+    () => [...instructionMarkers].sort((a, b) => a.stepNumber - b.stepNumber),
+    [instructionMarkers],
+  );
 
   if (isLoading) {
     return <LogoLoadingScreen message="Calculating route and fuel cost" />;
@@ -516,6 +694,9 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       <View style={styles.emptyContainer}>
         <Text>SEARCH</Text>
         <Text style={styles.emptyTitle}>No Route Found</Text>
+        {!!routeErrorMessage && (
+          <Text style={styles.warningText}>{routeErrorMessage}</Text>
+        )}
         <Button
           mode="contained"
           onPress={() => navigation.goBack()}
@@ -530,7 +711,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       {/* Map as full-screen background */}
-      <View style={StyleSheet.absoluteFillObject}>
+      <View style={styles.mapFill}>
         <MapViewComponent
           origin={routeResult.origin}
           destination={routeResult.destination}
@@ -583,6 +764,15 @@ const PrivateVehicleResultsScreen: React.FC = () => {
             if (y <= 0) collapseSheet();
           }}
         >
+          {isResolvingDirectionDetails && (
+            <View style={styles.warningCard}>
+              <Text style={styles.warningTitle}>Loading direction details…</Text>
+              <Text style={styles.warningText}>
+                Resolving nearby street names for turn steps.
+              </Text>
+            </View>
+          )}
+
           {isMock && (
             <View style={styles.warningCard}>
               <Text style={styles.warningTitle}>Using fallback values</Text>
@@ -751,46 +941,20 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       <View style={styles.routeCard}>
         <Text style={styles.routeTitle}>Turn-by-turn Directions</Text>
 
-        {directionStepsWithLocationNames.length > 0 ? (
-          directionStepsWithLocationNames.map((step, idx, arr) => {
-            // Step number
-            const stepNum = idx + 1;
-            // Determine if this is a start, turn, or arrive step
-            let mainInstruction = '';
-            let continueInstruction = '';
-            if (idx === 0 && step.icon === 'navigation-variant') {
-              // Start step
-              mainInstruction = `Start from ${step.turnPoint ? turnPointNames[step.id] || 'origin' : 'origin'}`;
-              continueInstruction = arr[idx + 1]?.distanceText ? `Continue for ${arr[idx + 1].distanceText}` : '';
-            } else if (step.icon === 'flag-checkered') {
-              // Arrive step
-              mainInstruction = `Arrive at ${step.turnPoint ? turnPointNames[step.id] || 'destination' : 'destination'}`;
-              continueInstruction = '';
-            } else {
-              // Turn step
-              // Extract direction from instruction
-              const direction = step.instruction.split(' ')[1] ? step.instruction.split(' ')[1] : '';
-              const nextStreet = (() => {
-                // Try to get next street name
-                const nextStep = arr[idx + 1];
-                if (nextStep && nextStep.turnPoint) {
-                  return turnPointNames[nextStep.id] || '';
-                }
-                return '';
-              })();
-              mainInstruction = `${step.instruction.split(' ')[0]} ${direction} onto ${nextStreet}`;
-              continueInstruction = arr[idx + 1]?.distanceText ? `Continue for ${arr[idx + 1].distanceText}` : '';
-            }
+        {instructionListItems.length > 0 ? (
+          instructionListItems.map((item, idx) => {
             return (
-              <View key={step.id} style={styles.directionRow}>
+              <View key={`instruction-list-${item.stepNumber}-${idx}`} style={styles.directionRow}>
                 <View style={styles.directionIconWrap}>
-                  <MaterialCommunityIcons name={step.icon as any} size={18} color={colors.primary} />
+                  <MaterialCommunityIcons name={item.icon as any} size={18} color={item.color || colors.primary} />
                 </View>
                 <View style={styles.directionTextWrap}>
-                  <Text style={styles.directionInstruction}>{`🔹 Step ${stepNum}`}</Text>
-                  <Text style={styles.directionInstruction}>{mainInstruction}</Text>
-                  {continueInstruction ? (
-                    <Text style={styles.directionDistance}>{continueInstruction}</Text>
+                  <Text style={styles.directionInstruction}>{`🔹 Step ${item.stepNumber}`}</Text>
+                  {!!item.title && (
+                    <Text style={styles.directionDistance}>{item.title}</Text>
+                  )}
+                  {!!item.subtitle ? (
+                    <Text style={styles.directionInstruction}>{item.subtitle}</Text>
                   ) : null}
                 </View>
               </View>
@@ -820,373 +984,6 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     </View>
   );
 };
-
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background
-  },
-  loadingText: {
-    marginTop: spacing.md,
-    fontSize: fontSize.lg,
-    color: colors.textSecondary
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
-    backgroundColor: colors.background
-  },
-  emptyTitle: {
-    fontSize: fontSize.title,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
-    marginTop: spacing.md,
-    marginBottom: spacing.lg
-  },
-  retryButton: {
-    borderRadius: borderRadius.lg
-  },
-  sheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: colors.white,
-    borderTopLeftRadius: borderRadius.xl,
-    borderTopRightRadius: borderRadius.xl,
-    overflow: 'hidden',
-    ...shadows.large
-  },
-  sheetHandleWrap: {
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    alignItems: 'center',
-    gap: 6
-  },
-  sheetHandle: {
-    width: 44,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.gray5
-  },
-  sheetHint: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary
-  },
-  sheetScroll: {
-    flex: 1
-  },
-  sheetContent: {
-    paddingBottom: spacing.xxl
-  },
-  warningCard: {
-    backgroundColor: colors.accentLight,
-    borderColor: colors.accentLight,
-    borderWidth: 1,
-    padding: spacing.md,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-    borderRadius: borderRadius.xl
-  },
-  warningTitle: {
-    fontSize: fontSize.md,
-    fontWeight: '700',
-    color: colors.gray1,
-    marginBottom: spacing.xs
-  },
-  warningText: {
-    fontSize: fontSize.sm,
-    color: colors.gray1
-  },
-  warningTextSmall: {
-    fontSize: fontSize.xs,
-    color: colors.gray1,
-    marginTop: spacing.sm
-  },
-  summaryCard: {
-    backgroundColor: colors.white,
-    padding: spacing.lg,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-    borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    borderColor: colors.gray6,
-    ...shadows.small
-  },
-  summaryTitle: {
-    fontSize: fontSize.xl,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
-    marginBottom: spacing.lg
-  },
-  overviewGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: spacing.lg
-  },
-  overviewItem: {
-    width: '50%',
-    alignItems: 'center',
-    marginBottom: spacing.lg
-  },
-  iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.sm
-  },
-  summaryLabel: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.sm
-  },
-  summaryValue: {
-    fontSize: fontSize.xl,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
-    marginTop: spacing.xs
-  },
-  detailsSection: {
-    borderTopWidth: 1,
-    borderTopColor: colors.gray6,
-    paddingTop: spacing.md
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.md
-  },
-  detailLabel: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    marginLeft: spacing.md,
-    flex: 1
-  },
-  detailValue: {
-    fontSize: fontSize.md,
-    fontWeight: '600',
-    color: colors.textPrimary
-  },
-  detailNote: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    marginTop: -spacing.xs,
-    marginBottom: spacing.md,
-    marginLeft: 36,
-    fontStyle: 'italic'
-  },
-  legCard: {
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.xl,
-    borderLeftWidth: 6,
-    borderLeftColor: colors.primary,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.gray6
-  },
-  legTitle: {
-    fontSize: fontSize.md,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  legSubtitle: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    marginBottom: spacing.md
-  },
-  legMetricsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  verticalDivider: {
-    width: 1,
-    height: 36,
-    backgroundColor: colors.gray5,
-    marginHorizontal: spacing.md,
-    borderRadius: 1,
-  },
-  legMetricItem: {
-    flex: 1,
-    alignItems: 'center'
-  },
-  metricLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs
-  },
-  legMetricLabel: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary
-  },
-  legMetricValue: {
-    fontSize: fontSize.lg,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginTop: spacing.xs
-  },
-  legMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.md
-  },
-  legMetaText: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary
-  },
-  routeCard: {
-    backgroundColor: colors.white,
-    padding: spacing.lg,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-    borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    borderColor: colors.gray6,
-    ...shadows.small
-  },
-  routeTitle: {
-    fontSize: fontSize.xl,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: spacing.md
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.md
-  },
-  locationInfo: {
-    marginLeft: spacing.md,
-    flex: 1
-  },
-  locationLabel: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary
-  },
-  locationName: {
-    fontSize: fontSize.lg,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginTop: 2
-  },
-  stopoversSection: {
-    marginBottom: spacing.md,
-    paddingLeft: spacing.md
-  },
-  stopoversTitle: {
-    fontSize: fontSize.md,
-    fontWeight: '600',
-    color: colors.primary,
-    marginBottom: spacing.md
-  },
-  stopoverRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-    paddingLeft: spacing.sm
-  },
-  stopoverInfo: {
-    marginLeft: spacing.md
-  },
-  stopoverName: {
-    fontSize: fontSize.md,
-    color: colors.textPrimary
-  },
-  stopoverType: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    textTransform: 'capitalize'
-  },
-  directionRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.md,
-  },
-  directionIconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: borderRadius.round,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  directionTextWrap: {
-    flex: 1,
-    marginLeft: spacing.md,
-  },
-  directionDistance: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    marginBottom: 2,
-  },
-  directionInstruction: {
-    fontSize: fontSize.md,
-    color: colors.textPrimary,
-    fontWeight: '500',
-  },
-  directionFallbackText: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-  },
-  scoreCard: {
-    backgroundColor: colors.white,
-    padding: spacing.lg,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
-    alignItems: 'center'
-  },
-  scoreTitle: {
-    fontSize: fontSize.xl,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: spacing.md
-  },
-  scoreCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: colors.primaryLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.md
-  },
-  scoreValue: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: colors.primary
-  },
-  scoreLabel: {
-    fontSize: fontSize.lg,
-    color: colors.textSecondary
-  },
-  scoreDescription: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    textAlign: 'center'
-  },
-  footer: {
-    padding: spacing.lg,
-    paddingBottom: spacing.xxl
-  },
-  saveButton: {
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.secondary
-  }
-});
 
 export default PrivateVehicleResultsScreen;
 
