@@ -5,6 +5,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
 import { Route } from '@/types';
 import { useApp } from '@context/AppContext';
+import { useLocation } from '@context/LocationContext';
 import RouteCard from '@components/RouteCard';
 import MapViewComponent from '@components/MapViewComponent';
 import { Button, ActivityIndicator } from 'react-native-paper';
@@ -24,6 +25,7 @@ const RouteResultsScreen: React.FC = () => {
   const route = useRoute<RouteResultsRouteProp>();
   const { origin, destination, preference, budget, maxTransfers, preferredModes } = route.params;
   const { isLoading, setIsLoading } = useApp();
+  const { clearSelectedLocations } = useLocation();
   
   const [routes, setRoutes] = useState<Route[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
@@ -264,6 +266,11 @@ const RouteResultsScreen: React.FC = () => {
 
   const keyExtractor = useCallback((item: Route) => item.id, []);
 
+  const handleCalculateAnotherRoute = useCallback(() => {
+    clearSelectedLocations();
+    navigation.navigate('PublicTransport');
+  }, [clearSelectedLocations, navigation]);
+
   const renderRouteItem: ListRenderItem<Route> = useCallback(({ item, index }) => (
     <RouteCard
       route={item}
@@ -297,11 +304,11 @@ const RouteResultsScreen: React.FC = () => {
           </Text>
           <Button
             mode="contained"
-            onPress={() => navigation.goBack()}
+            onPress={handleCalculateAnotherRoute}
             style={styles.retryButton}
             labelStyle={styles.retryButtonLabel}
           >
-            Try Again
+            Calculate Another Route
           </Button>
         </View>
       </View>
@@ -379,7 +386,14 @@ const RouteResultsScreen: React.FC = () => {
           <View style={styles.footer}>
             <Text style={styles.summaryTitle}>Trip Summary</Text>
             <Text style={styles.summaryEmptyHint}>Select one route result first to view steps and trip summary.</Text>
-            
+            <Button
+              mode="outlined"
+              onPress={handleCalculateAnotherRoute}
+              style={styles.calculateAnotherButton}
+              labelStyle={styles.calculateAnotherButtonLabel}
+            >
+              Calculate Another Route
+            </Button>
           </View>
         )}
 
@@ -404,7 +418,14 @@ const RouteResultsScreen: React.FC = () => {
                 </Text>
               </View>
             </View>
-            
+            <Button
+              mode="outlined"
+              onPress={handleCalculateAnotherRoute}
+              style={styles.calculateAnotherButton}
+              labelStyle={styles.calculateAnotherButtonLabel}
+            >
+              Calculate Another Route
+            </Button>
           </View>
         )}
       </Animated.View>
@@ -575,6 +596,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   continueButtonDisabled: {
     borderRadius: borderRadius.xl,
     backgroundColor: colors.gray5
+  },
+  calculateAnotherButton: {
+    marginTop: spacing.sm,
+    borderRadius: borderRadius.xl,
+    borderColor: colors.primary
+  },
+  calculateAnotherButtonLabel: {
+    color: colors.primary,
+    fontWeight: '700'
   }
 });
 

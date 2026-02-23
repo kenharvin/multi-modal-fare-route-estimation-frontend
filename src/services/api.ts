@@ -610,7 +610,7 @@ export const calculatePrivateVehicleRoute = async (
               } as PrivateDirectionStep;
             })
             .filter((x: PrivateDirectionStep | null): x is PrivateDirectionStep => !!x)
-            .filter((x) => x.stepType === 'turn' || x.stepType === 'uturn' || turnIcons.has(x.icon))
+            .filter((x: PrivateDirectionStep) => x.stepType === 'turn' || x.stepType === 'uturn' || turnIcons.has(x.icon))
         : [];
 
       return {
@@ -649,6 +649,7 @@ export const calculatePrivateVehicleRoute = async (
         distanceKm: number;
         estimatedTimeMin: number;
         geometry?: { latitude: number; longitude: number }[];
+        directionSteps?: PrivateDirectionStep[];
         fuelConsumptionL?: number;
         fuelCost?: number;
       }[];

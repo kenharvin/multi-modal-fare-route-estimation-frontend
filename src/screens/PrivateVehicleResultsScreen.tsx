@@ -5,6 +5,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
 import { PrivateVehicleRoute } from '@/types';
 import { useApp } from '@context/AppContext';
+import { useLocation } from '@context/LocationContext';
 import { Button } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { calculatePrivateVehicleRoute } from '@services/api';
@@ -36,6 +37,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const route = useRoute<PrivateVehicleResultsRouteProp>();
   const { origin, destination, vehicle, fuelPrice, stopovers, preferences } = route.params;
   const { isLoading, setIsLoading, setError } = useApp();
+  const { clearSelectedLocations } = useLocation();
   
   const [routeResult, setRouteResult] = useState<PrivateVehicleRoute | null>(null);
   const [routeErrorMessage, setRouteErrorMessage] = useState<string | null>(null);
@@ -176,6 +178,11 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     void calculateRoute();
   }, [calculateRoute]);
 
+  const handleCalculateAnotherRoute = useCallback(() => {
+    clearSelectedLocations();
+    navigation.navigate('PrivateVehicle');
+  }, [clearSelectedLocations, navigation]);
+
   
 
   const isMock = routeResult?.source === 'mock';
@@ -199,7 +206,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     );
   };
 
-  const haversineM = (a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) => {
+  const haversineM = useCallback((a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) => {
     const R = 6371000;
     const toRad = (x: number) => (x * Math.PI) / 180;
     const dLat = toRad(b.latitude - a.latitude);
@@ -210,7 +217,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     const s2 = Math.sin(dLon / 2);
     const h = s1 * s1 + Math.cos(lat1) * Math.cos(lat2) * s2 * s2;
     return 2 * R * Math.asin(Math.sqrt(h));
-  };
+  }, []);
 
   const shouldAnchor = (a?: { latitude: number; longitude: number }, b?: { latitude: number; longitude: number }) => {
     if (!a || !b || !isValidCoord(a) || !isValidCoord(b)) return false;
@@ -249,6 +256,19 @@ const PrivateVehicleResultsScreen: React.FC = () => {
   const computeLegSpeedKph = (distanceKm: number, timeMin: number) => {
     if (!distanceKm || !timeMin || timeMin <= 0) return null;
     return distanceKm / (timeMin / 60);
+  };
+
+  const formatStepDistance = (meters: number) => {
+    if (!Number.isFinite(meters) || meters <= 0) return undefined;
+    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+    return `${Math.max(10, Math.round(meters / 10) * 10)} m`;
+  };
+
+  const parseLegIndex = (stepId?: string): number | null => {
+    const match = String(stepId || '').match(/leg-(\d+)-/i);
+    if (!match) return null;
+    const idx = Number(match[1]);
+    return Number.isFinite(idx) ? idx : null;
   };
 
   const directionSteps = useMemo(() => {
@@ -348,7 +368,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       const steps: DirectionStep[] = [];
       let sinceLastTurnM = 0;
       let sinceLastStepM = 0;
-      const MIN_STEP_GAP_M = 45;
+      const MIN_STEP_GAP_M = 25;
 
       for (let i = 1; i < coords.length - 1; i++) {
         const segDist = haversineM(coords[i - 1], coords[i]);
@@ -358,9 +378,10 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         const prevBearing = bearingDeg(coords[i - 1], coords[i]);
         const nextBearing = bearingDeg(coords[i], coords[i + 1]);
         const turnDelta = normalizeTurnDelta(nextBearing, prevBearing);
+        const absTurnDelta = Math.abs(turnDelta);
         const maneuver = classifyTurn(turnDelta);
         const isUturn = maneuver?.icon === 'backup-restore';
-        const requiredGap = isUturn ? 20 : MIN_STEP_GAP_M;
+        const requiredGap = isUturn ? 8 : absTurnDelta >= 80 ? 10 : MIN_STEP_GAP_M;
 
         if (maneuver && sinceLastTurnM >= requiredGap) {
           steps.push({
@@ -402,7 +423,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     });
 
     return steps.filter(isTurnStep);
-  }, [routeResult]);
+  }, [haversineM, routeResult]);
 
   useEffect(() => {
     let cancelled = false;
@@ -477,6 +498,69 @@ const PrivateVehicleResultsScreen: React.FC = () => {
     };
   }, [directionSteps, turnPointNames]);
 
+  const legGeometryMap = useMemo(() => {
+    const map: Record<number, { latitude: number; longitude: number }[]> = {};
+    if (!routeResult) return map;
+
+    const legsToUse = Array.isArray(routeResult.legs) ? routeResult.legs : [];
+    legsToUse.forEach((leg, idx) => {
+      const coords = Array.isArray(leg.geometry) ? leg.geometry.filter(isValidCoord) : [];
+      if (coords.length >= 2) {
+        map[idx] = coords;
+      }
+    });
+
+    return map;
+  }, [routeResult]);
+
+  const distanceAlongLegGeometryM = useCallback(
+    (
+      stepA: DirectionStep,
+      stepB: DirectionStep,
+    ): number | null => {
+      if (!stepA.turnPoint || !stepB.turnPoint) return null;
+
+      const legA = parseLegIndex(stepA.id);
+      const legB = parseLegIndex(stepB.id);
+      if (legA === null || legB === null || legA !== legB) {
+        return haversineM(stepA.turnPoint, stepB.turnPoint);
+      }
+
+      const coords = legGeometryMap[legA];
+      if (!Array.isArray(coords) || coords.length < 2) {
+        return haversineM(stepA.turnPoint, stepB.turnPoint);
+      }
+
+      const nearestIdx = (point: { latitude: number; longitude: number }) => {
+        let bestIdx = 0;
+        let bestDist = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < coords.length; i++) {
+          const d = haversineM(point, coords[i]);
+          if (d < bestDist) {
+            bestDist = d;
+            bestIdx = i;
+          }
+        }
+        return bestIdx;
+      };
+
+      const aIdx = nearestIdx(stepA.turnPoint);
+      const bIdx = nearestIdx(stepB.turnPoint);
+      const start = Math.min(aIdx, bIdx);
+      const end = Math.max(aIdx, bIdx);
+      if (end <= start) {
+        return haversineM(stepA.turnPoint, stepB.turnPoint);
+      }
+
+      let total = 0;
+      for (let i = start; i < end; i++) {
+        total += haversineM(coords[i], coords[i + 1]);
+      }
+      return total > 0 ? total : haversineM(stepA.turnPoint, stepB.turnPoint);
+    },
+    [haversineM, legGeometryMap],
+  );
+
   const directionStepsWithLocationNames = useMemo(
     () =>
       directionSteps.map((step, idx, arr) => {
@@ -486,20 +570,33 @@ const PrivateVehicleResultsScreen: React.FC = () => {
           'backup-restore',
         ]);
 
-        // For turn instructions, use the next step's street name if available
+        let previousVisibleDistanceText = step.distanceText;
+        const prevStep = arr[idx - 1];
+        if (prevStep) {
+          const distM = distanceAlongLegGeometryM(prevStep, step);
+          const formatted = formatStepDistance(Number(distM || 0));
+          if (formatted) {
+            previousVisibleDistanceText = formatted;
+          }
+        }
+
+        // For turn instructions, use this step's turn-point street name.
         if (step.icon && turnIcons.has(step.icon) && !step.instruction.includes(' onto ')) {
-          const nextStep = arr[idx + 1];
-          const nextStreetName = nextStep && nextStep.turnPoint ? turnPointNames[nextStep.id] : undefined;
-          if (nextStreetName) {
+          const currentStreetName = step.turnPoint ? turnPointNames[step.id] : undefined;
+          if (currentStreetName) {
             return {
               ...step,
-              instruction: `${step.instruction} onto ${nextStreetName}`,
+              distanceText: previousVisibleDistanceText,
+              instruction: `${step.instruction} onto ${currentStreetName}`,
             };
           }
         }
-        return step;
+        return {
+          ...step,
+          distanceText: previousVisibleDistanceText,
+        };
       }),
-    [directionSteps, turnPointNames],
+    [directionSteps, distanceAlongLegGeometryM, turnPointNames],
   );
 
   const instructionMarkers = useMemo(() => {
@@ -544,13 +641,6 @@ const PrivateVehicleResultsScreen: React.FC = () => {
       popupTitle?: string;
       color?: string;
     }[] = [];
-
-    const parseLegIndex = (stepId?: string): number | null => {
-      const match = String(stepId || '').match(/leg-(\d+)-/i);
-      if (!match) return null;
-      const idx = Number(match[1]);
-      return Number.isFinite(idx) ? idx : null;
-    };
 
     const legColorFor = (legIndex: number | null) => {
       if (legIndex === null || legIndex < 0) return colors.primary;
@@ -699,10 +789,10 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         )}
         <Button
           mode="contained"
-          onPress={() => navigation.goBack()}
+          onPress={handleCalculateAnotherRoute}
           style={styles.retryButton}
         >
-          Try Again
+          Calculate Another Route
         </Button>
       </View>
     );
@@ -766,9 +856,9 @@ const PrivateVehicleResultsScreen: React.FC = () => {
         >
           {isResolvingDirectionDetails && (
             <View style={styles.warningCard}>
-              <Text style={styles.warningTitle}>Loading direction details…</Text>
+              <Text style={styles.warningTitle}>Getting your directions ready…</Text>
               <Text style={styles.warningText}>
-                Resolving nearby street names for turn steps.
+                Adding street names to your turn-by-turn steps.
               </Text>
             </View>
           )}
@@ -977,6 +1067,12 @@ const PrivateVehicleResultsScreen: React.FC = () => {
           </Text>
         </View>
       )}
+
+      <View style={styles.footer}>
+        <Button mode="outlined" onPress={handleCalculateAnotherRoute} style={styles.saveButton}>
+          Calculate Another Route
+        </Button>
+      </View>
 
           
         </Animated.ScrollView>
