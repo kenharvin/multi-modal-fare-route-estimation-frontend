@@ -7,6 +7,9 @@ concurrency:
   group: android-apk-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -39,13 +42,47 @@ jobs:
       - name: Generate Android project
         run: npx expo prebuild --platform android --non-interactive --no-install
 
-      - name: Build APK (debug, installable)
+      - name: Build APK (debug, ARM64 only)
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a
+
+      - name: Resolve APK path
+        id: apk
+        run: |
+          set -euo pipefail
+          APK_PATH="$(ls -1 android/app/build/outputs/apk/debug/*.apk | head -n 1)"
+          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ steps.apk.outputs.apk_path }}
           if-no-files-found: error
+
+      - name: Publish latest respondent release
+        id: publish_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="respondent-latest"
+          TITLE="Respondent APK (Latest)"
+          NOTES="Latest debug APK for respondents from workflow run #${{ github.run_number }}."
+          APK_PATH="${{ steps.apk.outputs.apk_path }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK_PATH#app-debug.apk" --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes "$NOTES"
+          else
+            gh release create "$TAG" "$APK_PATH#app-debug.apk" --title "$TITLE" --notes "$NOTES"
+          fi
+
+          RELEASE_URL="$(gh release view "$TAG" --json url --jq .url)"
+          echo "release_url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Add release link to job summary
+        run: |
+          echo "## Respondent Download Link" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.publish_release.outputs.release_url }}" >> "$GITHUB_STEP_SUMMARY"
