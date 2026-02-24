@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 import * as ExpoLocation from 'expo-location';
 import { Location, Coordinates } from '@/types';
 
@@ -29,8 +29,14 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const getCurrentLocation = useCallback(async (): Promise<Coordinates | null> => {
     try {
+      const servicesEnabled = await ExpoLocation.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        console.warn('Location services are disabled. Enable GPS/location services to use current location.');
+        return null;
+      }
+
       const location = await ExpoLocation.getCurrentPositionAsync({
-        accuracy: ExpoLocation.Accuracy.High
+        accuracy: ExpoLocation.Accuracy.Balanced,
       });
       
       const coords: Coordinates = {
@@ -41,7 +47,26 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
       setCurrentLocation(coords);
       return coords;
     } catch (error) {
-      console.error('Error getting current location:', error);
+      try {
+        const lastKnown = await ExpoLocation.getLastKnownPositionAsync({
+          maxAge: 1000 * 60 * 10,
+          requiredAccuracy: 500,
+        });
+
+        if (lastKnown?.coords) {
+          const coords: Coordinates = {
+            latitude: lastKnown.coords.latitude,
+            longitude: lastKnown.coords.longitude,
+          };
+          setCurrentLocation(coords);
+          console.warn('Using last known location because current GPS fix is unavailable.');
+          return coords;
+        }
+      } catch (lastKnownError) {
+        console.warn('Failed to get last known location:', lastKnownError);
+      }
+
+      console.warn('Current location unavailable; continuing without device location.');
       return null;
     }
 
@@ -63,10 +88,6 @@ export const LocationProvider: React.FC<{ children: ReactNode }> = ({ children }
       return false;
     }
   }, [getCurrentLocation]);
-
-  useEffect(() => {
-    void requestLocationPermission();
-  }, [requestLocationPermission]);
 
   return (
     <LocationContext.Provider

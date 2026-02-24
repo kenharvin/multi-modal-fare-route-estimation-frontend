@@ -4,7 +4,27 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 const resolveApiBaseUrl = (): string => {
-  let base = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+  const backendTarget = String(process.env.EXPO_PUBLIC_BACKEND_TARGET || 'local')
+    .trim()
+    .toLowerCase();
+
+  const localBase = String(
+    process.env.EXPO_PUBLIC_API_BASE_URL_LOCAL ||
+      process.env.EXPO_PUBLIC_API_BASE_URL ||
+      'http://localhost:8000'
+  )
+    .trim()
+    .replace(/\/+$/, '');
+
+  const deployedBase = String(process.env.EXPO_PUBLIC_API_BASE_URL_DEPLOYED || '')
+    .trim()
+    .replace(/\/+$/, '');
+
+  let base =
+    backendTarget === 'deployed' && deployedBase.length > 0
+      ? deployedBase
+      : localBase;
+
   // If running on device/emulator and base points to localhost, try to infer LAN IP
   if (Platform.OS !== 'web' && /localhost|127\.0\.0\.1/i.test(base)) {
     try {
