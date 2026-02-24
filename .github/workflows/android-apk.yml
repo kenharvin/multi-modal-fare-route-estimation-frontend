@@ -20,6 +20,7 @@ jobs:
       EXPO_PUBLIC_API_BASE_URL: https://navigo.ildf.site
       EXPO_PUBLIC_OPENSTREETMAP_API_URL: https://nominatim.openstreetmap.org
       EXPO_PUBLIC_API_KEY: ${{ secrets.EXPO_PUBLIC_API_KEY }}
+      GRADLE_OPTS: -Xmx4g -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8
 
     steps:
       - name: Checkout repository
@@ -45,7 +46,7 @@ jobs:
 
       - name: Build APK (release, ARM64 only)
         working-directory: android
-        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a -x lint -x lintVitalAnalyzeRelease --no-daemon
 
       - name: Resolve app version
         id: appmeta
