@@ -816,6 +816,7 @@ const PrivateVehicleResultsScreen: React.FC = () => {
           mode="contained"
           onPress={handleCalculateAnotherRoute}
           style={styles.retryButton}
+          labelStyle={styles.retryButtonLabel}
         >
           Calculate Another Route
         </Button>

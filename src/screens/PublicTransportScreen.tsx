@@ -186,7 +186,13 @@ const PublicTransportScreen: React.FC = () => {
         {!compact && <Text style={styles.sectionTitle}>Locations</Text>}
 
         {showMap ? (
-          <Button mode="outlined" onPress={handleHideMap} style={styles.hideMapButton} icon="eye-off">
+          <Button
+            mode="outlined"
+            onPress={handleHideMap}
+            style={styles.hideMapButton}
+            labelStyle={styles.outlinedButtonLabel}
+            icon="eye-off"
+          >
             Hide Map
           </Button>
         ) : (
@@ -624,6 +630,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.sm,
     borderRadius: borderRadius.lg,
     borderColor: colors.gray5,
+  },
+  outlinedButtonLabel: {
+    color: colors.textPrimary,
+    fontWeight: '600'
   },
   mapContainer: {
     height: 300,

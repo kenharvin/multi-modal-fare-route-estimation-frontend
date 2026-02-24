@@ -123,6 +123,10 @@ export const createPrivateVehicleScreenStyles = (colors: ThemeColors) =>
       borderColor: colors.primary,
       marginBottom: spacing.lg,
     },
+    outlinedButtonLabel: {
+      color: colors.textPrimary,
+      fontWeight: '600'
+    },
     vehiclesContainer: {
       flexDirection: 'row',
       flexWrap: 'wrap',

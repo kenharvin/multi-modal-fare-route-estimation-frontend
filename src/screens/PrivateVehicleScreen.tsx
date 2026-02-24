@@ -392,7 +392,13 @@ const PrivateVehicleScreen: React.FC = () => {
         {!compact && <Text style={styles.sectionTitle}>Locations</Text>}
 
         {showMap ? (
-          <Button mode="outlined" onPress={handleHideMap} style={styles.hideMapButton} icon="eye-off">
+          <Button
+            mode="outlined"
+            onPress={handleHideMap}
+            style={styles.hideMapButton}
+            labelStyle={styles.outlinedButtonLabel}
+            icon="eye-off"
+          >
             Hide Map
           </Button>
         ) : (
@@ -426,6 +432,7 @@ const PrivateVehicleScreen: React.FC = () => {
             mode="outlined"
             onPress={handleAddStopoverField}
             style={styles.addStopoverButton}
+            labelStyle={styles.outlinedButtonLabel}
             icon="plus"
           >
             Add Stopover (Optional)

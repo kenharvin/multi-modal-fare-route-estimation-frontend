@@ -42,6 +42,10 @@ export const createPrivateVehicleResultsScreenStyles = (colors: ThemeColors) =>
     retryButton: {
       borderRadius: borderRadius.lg
     },
+    retryButtonLabel: {
+      color: colors.white,
+      fontWeight: '600'
+    },
     sheet: {
       position: 'absolute',
       left: 0,

@@ -386,6 +386,16 @@ const RouteResultsScreen: React.FC = () => {
             const y = e?.nativeEvent?.contentOffset?.y ?? 0;
             if (y <= 0) collapseSheet();
           }}
+          ListHeaderComponent={
+            shouldHideMapWhilePreparingRoute ? (
+              <View style={styles.statusCard}>
+                <Text style={styles.statusTitle}>Preparing route on map…</Text>
+                <Text style={styles.statusText}>
+                  Polylines are still rendering. Please wait a moment before switching routes.
+                </Text>
+              </View>
+            ) : null
+          }
         />
 
         {!selectedRoute && (
@@ -492,6 +502,24 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   retryButtonLabel: {
     color: colors.textWhite,
     fontWeight: '700'
+  },
+  statusCard: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
+    borderWidth: 1,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: borderRadius.xl,
+  },
+  statusTitle: {
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  statusText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
   },
   mapPreparationContainer: {
     ...StyleSheet.absoluteFillObject,
