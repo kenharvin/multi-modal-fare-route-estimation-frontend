@@ -43,21 +43,30 @@ jobs:
       - name: Generate Android project
         run: npx expo prebuild --platform android --non-interactive --no-install
 
-      - name: Build APK (debug, ARM64 only)
+      - name: Build APK (release, ARM64 only)
         working-directory: android
-        run: ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+
+      - name: Resolve app version
+        id: appmeta
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./app.json').expo.version")"
+          APK_FILENAME="navigo-v${VERSION}.apk"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "apk_filename=$APK_FILENAME" >> "$GITHUB_OUTPUT"
 
       - name: Resolve APK path
         id: apk
         run: |
           set -euo pipefail
-          APK_PATH="$(ls -1 android/app/build/outputs/apk/debug/*.apk | head -n 1)"
+          APK_PATH="$(ls -1 android/app/build/outputs/apk/release/*.apk | head -n 1)"
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
+          name: navigo-v${{ steps.appmeta.outputs.version }}-apk
           path: ${{ steps.apk.outputs.apk_path }}
           if-no-files-found: error
 
@@ -70,14 +79,15 @@ jobs:
 
           TAG="respondent-latest"
           TITLE="Respondent APK (Latest)"
-          NOTES="Latest debug APK for respondents from workflow run #${{ github.run_number }}."
+          NOTES="Latest release APK for respondents from workflow run #${{ github.run_number }} (v${{ steps.appmeta.outputs.version }})."
           APK_PATH="${{ steps.apk.outputs.apk_path }}"
+          APK_FILENAME="${{ steps.appmeta.outputs.apk_filename }}"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$APK_PATH#app-debug.apk" --clobber
+            gh release upload "$TAG" "$APK_PATH#$APK_FILENAME" --clobber
             gh release edit "$TAG" --title "$TITLE" --notes "$NOTES"
           else
-            gh release create "$TAG" "$APK_PATH#app-debug.apk" --title "$TITLE" --notes "$NOTES"
+            gh release create "$TAG" "$APK_PATH#$APK_FILENAME" --title "$TITLE" --notes "$NOTES"
           fi
 
           RELEASE_URL="$(gh release view "$TAG" --json url --jq .url)"
