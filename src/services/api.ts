@@ -24,20 +24,9 @@ export type PrivateFuelPriceOption = {
   is_default: boolean;
 };
 
-// -----------------------------------------------------------------------------
-// Config
-// -----------------------------------------------------------------------------
-
-// Default to compact route summaries for fast UX; request full geometry only when needed.
 const COMPACT_ROUTES = String(process.env.EXPO_PUBLIC_COMPACT_ROUTES || '1').trim() === '1';
-const ESTIMATED_BUDGET = Number(process.env.EXPO_PUBLIC_ESTIMATED_BUDGET || 1000); // higher default to avoid over-filtering long trips
-
-// -----------------------------------------------------------------------------
-// System
-// -----------------------------------------------------------------------------
-/**
- * Simple backend health check to detect network reachability
- */
+const GTFS_OVERLAY_ROUTES = String(process.env.EXPO_PUBLIC_GTFS_OVERLAY_ROUTES || '1').trim() === '1';
+/** Checks backend reachability. */
 export const pingBackend = async (): Promise<boolean> => {
   try {
     const res = await apiClient.get('/system/health');
@@ -107,10 +96,7 @@ export const getCoverageBoundaries = async (): Promise<ModeCoverageBoundaries> =
   };
 };
 
-/**
- * Get an OSM-following preview polyline between two points
- * Returns Coordinates[] converted from GeoJSON [lon,lat]
- */
+/** Gets a preview polyline between two points. */
 export const getPreviewPolyline = async (
   origin: { latitude: number; longitude: number },
   destination: { latitude: number; longitude: number }
@@ -126,25 +112,18 @@ export const getPreviewPolyline = async (
   return { coords, source: data?.source || 'direct', distance_m: data?.distance_m };
 };
 
-// -----------------------------------------------------------------------------
-// Public transport
-// -----------------------------------------------------------------------------
-
-/**
- * Fetch available public transport routes from FastAPI backend
- */
+/** Fetches public transport routes and maps backend payloads to UI routes. */
 export const fetchRoutes = async (
   origin: Location,
   destination: Location,
   preference: PublicTransportPreference,
-  options?: { budget?: number; maxTransfers?: number; preferredModes?: string[]; compact?: boolean }
+  options?: { budget?: number; maxTransfers?: number; preferredModes?: string[]; compact?: boolean; gtfsOverlay?: boolean }
 ): Promise<Route[]> => {
-  const maxAttempts = 2; // initial try + 1 retry on transient errors
+  const maxAttempts = 2;
   let lastError: any = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-    // Map preference enum to backend preference_type
     const preferenceMap: Record<PublicTransportPreference, string> = {
       [PublicTransportPreference.BALANCED]: 'balanced',
       [PublicTransportPreference.LOWEST_FARE]: 'lowest_fare',
@@ -157,7 +136,16 @@ export const fetchRoutes = async (
     console.log('[API] Destination:', destination);
 
     const useCompact = typeof options?.compact === 'boolean' ? options.compact : COMPACT_ROUTES;
-    const response = await apiClient.post(`/public-transport/plan?compact=${useCompact ? 1 : 0}&gtfs_overlay=0`, {
+    const useGtfsOverlay = typeof options?.gtfsOverlay === 'boolean' ? options.gtfsOverlay : GTFS_OVERLAY_ROUTES;
+    const budgetValue = Number(options?.budget);
+    const maxTransfersValue = Number(options?.maxTransfers);
+    const preferencesPayload: any = {
+      preference_type: preferenceMap[preference] || 'balanced',
+      preferred_modes: options?.preferredModes ?? ['walk', 'jeepney', 'bus', 'lrt', 'mrt', 'pnr'],
+      ...(Number.isFinite(budgetValue) ? { estimated_budget: budgetValue } : {}),
+      ...(Number.isFinite(maxTransfersValue) ? { max_transfers: maxTransfersValue } : {})
+    };
+    const response = await apiClient.post(`/public-transport/plan?compact=${useCompact ? 1 : 0}&gtfs_overlay=${useGtfsOverlay ? 1 : 0}`, {
       origin: {
         lat: origin.coordinates.latitude,
         lon: origin.coordinates.longitude,
@@ -168,22 +156,15 @@ export const fetchRoutes = async (
         lon: destination.coordinates.longitude,
         name: destination.name
       },
-      preferences: {
-        preference_type: preferenceMap[preference] || 'balanced',
-        estimated_budget: options?.budget ?? ESTIMATED_BUDGET,
-        preferred_modes: options?.preferredModes ?? ['walk', 'jeepney', 'bus', 'lrt', 'mrt', 'pnr'],
-        max_transfers: options?.maxTransfers
-      }
+      preferences: preferencesPayload
     }, { timeout: ROUTE_TIMEOUT_MS });
 
     console.log('[API] Backend response:', response.data);
 
-    // Convert backend response to frontend Route[] format (Top 3 by fuzzy score)
     if (response.data) {
       const base = response.data;
       const results: Route[] = [];
 
-      // Prefer `route`, but also handle `recommended_route` (backend compatibility)
       const routePayload = base.route || base.recommended_route;
       const hasPrimaryRoute = Array.isArray(routePayload) ? routePayload.length > 0 : !!routePayload;
       if (hasPrimaryRoute) {
@@ -201,7 +182,6 @@ export const fetchRoutes = async (
           if (Array.isArray(altRoute) && altRoute.length === 0) {
             continue;
           }
-          // Alternatives are summarized objects: {rank,total_fare,total_travel_time,total_transfers,fuzzy_score,route}
           const converted = convertBackendRouteToFrontend({
             ...base,
             ...alt,
@@ -210,7 +190,6 @@ export const fetchRoutes = async (
             total_transfers: alt.total_transfers,
             fuzzy_score: alt.fuzzy_score,
             route: alt.route || [],
-            // In compact mode, the backend intentionally returns no map_geojson.
             map_geojson: base.map_geojson
           });
           results.push(converted);
@@ -222,7 +201,6 @@ export const fetchRoutes = async (
         return results;
       }
 
-      // If backend returned a meaningful message, propagate it
       if (typeof response.data.message === 'string' && response.data.message.length > 0) {
         throw new Error(response.data.message);
       }
@@ -237,12 +215,10 @@ export const fetchRoutes = async (
       if (isTimeout) {
         console.warn(`[API] Route request timed out after ${ROUTE_TIMEOUT_MS}ms (attempt ${attempt}/${maxAttempts}).`);
       } else {
-        // Prefer backend error message if available
         const backendMsg = error?.response?.data?.message || error?.response?.data?.error;
         const msg = backendMsg || error?.message || error;
         console.warn(`[API] Route request failed (attempt ${attempt}/${maxAttempts}):`, msg);
       }
-      // simple backoff before retrying
       if (attempt < maxAttempts && isTransient) {
         const delayMs = attempt * 4000;
         await new Promise(res => setTimeout(res, delayMs));
@@ -255,10 +231,7 @@ export const fetchRoutes = async (
   throw lastError || new Error('Failed to fetch routes');
 };
 
-/**
- * Fetch/compute per-segment geometry for a selected route.
- * Uses backend /public-transport/geometry to avoid re-running route planning.
- */
+/** Fetches per-leg geometry for a selected route. */
 export const fetchRouteGeometry = async (route: Route): Promise<Route> => {
   const toLatLon = (p: any): { latitude: number; longitude: number } | null => {
     if (!Array.isArray(p) || p.length < 2) return null;
@@ -266,18 +239,14 @@ export const fetchRouteGeometry = async (route: Route): Promise<Route> => {
     const b = Number(p[1]);
     if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
 
-    // Backend *should* return GeoJSON order: [lon,lat].
-    // Some sources (or future changes) may emit [lat,lon]. Detect using ranges.
     const aLooksLat = Math.abs(a) <= 90;
     const bLooksLat = Math.abs(b) <= 90;
     const bLooksLon = Math.abs(b) <= 180;
 
-    // If [lat,lon] (common in some libs): a=lat, b=lon
     if (aLooksLat && bLooksLon && !bLooksLat) {
       return { latitude: a, longitude: b };
     }
 
-    // Default: [lon,lat]
     return { latitude: b, longitude: a };
   };
 
@@ -304,16 +273,11 @@ export const fetchRouteGeometry = async (route: Route): Promise<Route> => {
       origin_node: s.originNode,
       destination_node: s.destinationNode,
       mode,
-      // Exact planned node sequence (if available) lets backend rebuild the polyline
-      // from the chosen path instead of OSRM guessing between endpoints.
       path_nodes: Array.isArray((s as any).pathNodes) ? (s as any).pathNodes : undefined,
-      // Helps backend avoid reusing cached geometry from a different route that shares endpoints.
-      // Only send for transit legs.
       route_id: isWalk ? undefined : (s.routeName || undefined)
     };
   });
 
-  // On selection, prefer GTFS rail shapes when available for more accurate train polylines.
   const res = await apiClient.post('/public-transport/geometry?gtfs_overlay=1', { legs });
   const geoms: any[] = Array.isArray(res.data?.geometries) ? res.data.geometries : [];
 
@@ -340,13 +304,10 @@ export const fetchRouteGeometry = async (route: Route): Promise<Route> => {
   return { ...route, segments: updatedSegments };
 };
 
-/**
- * Convert backend route response to frontend Route format
- */
+/** Converts backend route response into frontend route shape. */
 const convertBackendRouteToFrontend = (backendResponse: any): Route => {
   console.log('[Converter] Processing backend response...');
   console.log('[Converter] map_geojson:', backendResponse.map_geojson);
-  // Extract debug coordinates for pinned origin/destination and chosen stops
   const debugOriginPinned = backendResponse.debug_snapped_origin && typeof backendResponse.debug_snapped_origin.lat === 'number'
     ? { latitude: backendResponse.debug_snapped_origin.lat, longitude: backendResponse.debug_snapped_origin.lon }
     : undefined;
@@ -360,7 +321,6 @@ const convertBackendRouteToFrontend = (backendResponse: any): Route => {
     ? { latitude: backendResponse.debug_chosen_destination_stop.lat, longitude: backendResponse.debug_chosen_destination_stop.lon }
     : undefined;
   
-  // Extract geometry from map_geojson if available
   const geometryMap = new Map<number, any[]>();
   if (backendResponse.map_geojson?.features) {
     console.log('[Converter] Found', backendResponse.map_geojson.features.length, 'features in map_geojson');
@@ -375,24 +335,19 @@ const convertBackendRouteToFrontend = (backendResponse: any): Route => {
   }
 
   const segments = backendResponse.route?.map((leg: any, index: number) => {
-    // Get geometry coordinates for this leg
-    // Prefer per-leg geometry from backend (already road-following)
     const coordsFromLeg = Array.isArray(leg.geometry_coords) ? leg.geometry_coords : [];
     const coords = coordsFromLeg.length > 0 ? coordsFromLeg : (geometryMap.get(index) || []);
     console.log(`[Converter] Leg ${index}: mode=${leg.mode}, coords=${coords.length}`);
     
-    // Extract origin and destination coordinates from geometry if available
     let originCoords: { latitude: number; longitude: number } | undefined;
     let destCoords: { latitude: number; longitude: number } | undefined;
     
     if (coords.length > 0) {
-      // coords are [lon, lat] in GeoJSON format
       originCoords = { latitude: coords[0][1], longitude: coords[0][0] };
       destCoords = { latitude: coords[coords.length - 1][1], longitude: coords[coords.length - 1][0] };
       console.log(`[Converter] Leg ${index}: origin=(${originCoords.latitude}, ${originCoords.longitude}), dest=(${destCoords.latitude}, ${destCoords.longitude})`);
     } else {
       console.warn(`[Converter] Leg ${index}: No geometry coordinates, computing fallback endpoints`);
-      // Fallback endpoints for walk legs using backend debug fields
       const isWalk = (leg.mode === 'walk');
       const isOriginPinned = isWalk && leg.origin === 'Origin (Pinned)';
       const isDestPinned = isWalk && leg.destination === 'Destination (Pinned)';
@@ -405,12 +360,10 @@ const convertBackendRouteToFrontend = (backendResponse: any): Route => {
       }
     }
 
-    // Convert geometry to Coordinates array (GeoJSON lon,lat -> RN lat,lon)
     let geometry = coords.map((coord: number[]) => ({
       latitude: coord[1],
       longitude: coord[0]
     }));
-    // If no coords but we have fallback endpoints, use direct line
     if (geometry.length === 0 && originCoords && destCoords) {
       geometry = [originCoords, destCoords];
     }
@@ -451,6 +404,35 @@ const convertBackendRouteToFrontend = (backendResponse: any): Route => {
   console.log('[Converter] Total segments:', segments.length);
   console.log('[Converter] Segments with geometry:', segments.filter((s: any) => s.geometry).length);
 
+  const extractConstraintNotice = (message: any): string | undefined => {
+    if (typeof message !== 'string') return undefined;
+    const normalized = message.trim();
+    if (!normalized) return undefined;
+
+    const transferMarker = 'No routes available with <=';
+    const walkMarker = 'No routes available within the walking limits';
+    const budgetMarker = 'No routes found within budget of PHP';
+
+    const transferIdx = normalized.indexOf(transferMarker);
+    if (transferIdx >= 0) {
+      return normalized.slice(transferIdx).trim();
+    }
+
+    const walkIdx = normalized.indexOf(walkMarker);
+    if (walkIdx >= 0) {
+      return normalized.slice(walkIdx).trim();
+    }
+
+    const budgetIdx = normalized.indexOf(budgetMarker);
+    if (budgetIdx >= 0) {
+      return normalized.slice(budgetIdx).trim();
+    }
+
+    return undefined;
+  };
+
+  const constraintNotice = extractConstraintNotice(backendResponse?.message);
+
   return {
     id: (backendResponse?.rank ? `rank-${backendResponse.rank}` : Date.now().toString()),
     segments,
@@ -458,25 +440,17 @@ const convertBackendRouteToFrontend = (backendResponse: any): Route => {
     totalTime: backendResponse.total_travel_time || 0,
     totalDistance: segments.reduce((sum: number, seg: any) => sum + seg.distance, 0),
     totalTransfers: backendResponse.total_transfers || 0,
-    fuzzyScore: typeof backendResponse.fuzzy_score === 'number' ? backendResponse.fuzzy_score : (Number(backendResponse.fuzzy_score) || 0)
+    fuzzyScore: typeof backendResponse.fuzzy_score === 'number' ? backendResponse.fuzzy_score : (Number(backendResponse.fuzzy_score) || 0),
+    constraintNotice
   };
 };
 
-// -----------------------------------------------------------------------------
-// Public transport (helpers)
-// -----------------------------------------------------------------------------
-
-/**
- * Get nearest stop from coordinates (for map pin selection)
- */
+/** Builds a temporary location object for map-picked coordinates. */
 export const getNearestStop = async (
   latitude: number,
   longitude: number
 ): Promise<Location> => {
   try {
-    // Backend uses graph-based nearest stop finding
-    // This is handled internally by the /public-transport/plan endpoint
-    // For now, return a placeholder that the plan endpoint will resolve
     return {
       name: `Location at ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
       coordinates: { latitude, longitude }
@@ -487,9 +461,7 @@ export const getNearestStop = async (
   }
 };
 
-/**
- * Search for stops by name (for autocomplete)
- */
+/** Searches public transport stops by name. */
 export const searchStops = async (query: string): Promise<Location[]> => {
   try {
     const response = await apiClient.get(`/stops/search?q=${encodeURIComponent(query)}&limit=10`);
@@ -512,13 +484,7 @@ export const searchStops = async (query: string): Promise<Location[]> => {
   }
 };
 
-// -----------------------------------------------------------------------------
-// Private vehicle
-// -----------------------------------------------------------------------------
-
-/**
- * Calculate private vehicle route and cost
- */
+/** Calculates private vehicle route, legs, and fuel estimates. */
 export const calculatePrivateVehicleRoute = async (
   origin: Location,
   destination: Location,
@@ -528,8 +494,6 @@ export const calculatePrivateVehicleRoute = async (
   preferences: DrivingPreferences
 ): Promise<PrivateVehicleRoute> => {
   try {
-    // Backend currently returns distance/time + geometry; compute fuel metrics client-side.
-
     const safeEfficiency = vehicle?.fuelEfficiency && vehicle.fuelEfficiency > 0 ? vehicle.fuelEfficiency : 1;
 
     const buildPayload = (o: Location, d: Location, stopoverLocs?: Location[]) => {
@@ -639,7 +603,6 @@ export const calculatePrivateVehicleRoute = async (
 
     const stopoverLocs = (stopovers || []).map((s) => s?.location).filter((x): x is Location => !!x);
 
-    // If stopovers exist, compute each leg separately so the UI can show per-leg metrics and draw per-leg colored polylines.
     if (stopoverLocs.length > 0) {
       const points: Location[] = [origin, ...stopoverLocs, destination];
       const legs = [] as {
@@ -709,13 +672,9 @@ export const calculatePrivateVehicleRoute = async (
           legs,
           source: 'backend'
         };
-      } catch {
-        // If any per-leg call fails, fall back to a single multi-stop call.
-        // (This keeps the feature robust even if one leg can't be routed.)
-      }
+      } catch {}
     }
 
-    // No stopovers (or per-leg failed): single request.
     const single = await requestRoute(origin, destination, stopoverLocs.length ? stopoverLocs : undefined);
     const distanceKm = Number(single.distanceKm || 0);
     const estimatedTimeMin = Number(single.estimatedTimeMin || 0);
@@ -778,13 +737,7 @@ export const calculatePrivateVehicleRoute = async (
   }
 };
 
-// -----------------------------------------------------------------------------
-// Private vehicle (search)
-// -----------------------------------------------------------------------------
-
-/**
- * Search POIs by name (for private vehicle autocomplete)
- */
+/** Searches private-vehicle POIs by text query. */
 export const searchPois = async (
   query: string,
   limit: number = 10,
@@ -819,7 +772,6 @@ export const searchPois = async (
         })()
       }));
 
-    // Hide generic brand-only entries if we have richer branch-like titles.
     const q0 = String(query || '').trim().toLowerCase();
     const hasSpecific = mapped.some((m: Location) => m.name.toLowerCase() !== q0 && m.name.toLowerCase().includes(q0));
     if (hasSpecific) {
@@ -896,13 +848,7 @@ export const getPrivateFuelPriceOptions = async (): Promise<
   }
 };
 
-// -----------------------------------------------------------------------------
-// Trips
-// -----------------------------------------------------------------------------
-
-/**
- * Save trip plan to user account
- */
+/** Saves a trip plan to the backend. */
 export const saveTripPlan = async (tripPlan: any): Promise<boolean> => {
   try {
     const response = await apiClient.post<ApiResponse<any>>('/trips/save', {
@@ -916,11 +862,7 @@ export const saveTripPlan = async (tripPlan: any): Promise<boolean> => {
   }
 };
 
-// -----------------------------------------------------------------------------
-// Mocks
-// -----------------------------------------------------------------------------
-
-// Mock data functions for development (private vehicle only)
+/** Creates a local fallback private route for transient backend failures. */
 
 const getMockPrivateVehicleRoute = (
   origin: Location,
@@ -952,7 +894,6 @@ const getMockPrivateVehicleRoute = (
     const o = points[i];
     const d = points[i + 1];
     const distanceKm = haversineKm(o, d);
-    // Assume 30 kph for mock time
     const estimatedTimeMin = distanceKm > 0 ? Math.round((distanceKm / 30) * 60) : 0;
     const fuelConsumptionL = distanceKm / safeEfficiency;
     const fuelCost = fuelConsumptionL * (fuelPrice || 0);
@@ -986,9 +927,5 @@ const getMockPrivateVehicleRoute = (
     fuzzyScore: 0.92
   };
 };
-
-// -----------------------------------------------------------------------------
-// Exports
-// -----------------------------------------------------------------------------
 
 export default apiClient;

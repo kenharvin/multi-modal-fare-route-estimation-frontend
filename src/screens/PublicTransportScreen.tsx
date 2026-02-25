@@ -25,9 +25,7 @@ const PublicTransportScreen: React.FC = () => {
   const [showMap, setShowMap] = useState<boolean>(false);
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
   const [locationPickMode, setLocationPickMode] = useState<'origin' | 'destination' | null>(null);
-  // Leave empty by default; only constrain when user enters a value.
   const [budget, setBudget] = useState<string>('');
-  // Leave empty by default so long-distance trips aren't accidentally filtered out.
   const [maxTransfers, setMaxTransfers] = useState<string>('');
   const [preferredModes, setPreferredModes] = useState<string[]>(['jeepney','bus','lrt','mrt','pnr']);
 
@@ -147,7 +145,6 @@ const PublicTransportScreen: React.FC = () => {
     }
 
     setIsLoading(true);
-    // Navigate to route results
     navigation.navigate('RouteResults', {
       origin: selectedOrigin,
       destination: selectedDestination,
@@ -280,6 +277,8 @@ const PublicTransportScreen: React.FC = () => {
                   value={budget}
                   onChangeText={setBudget}
                   placeholder="Optional (e.g. 150)"
+                  placeholderTextColor={colors.textLight}
+                  selectionColor={colors.primary}
                 />
               </View>
             )}
@@ -293,6 +292,8 @@ const PublicTransportScreen: React.FC = () => {
                   value={maxTransfers}
                   onChangeText={setMaxTransfers}
                   placeholder="e.g. 3"
+                  placeholderTextColor={colors.textLight}
+                  selectionColor={colors.primary}
                 />
               </View>
             )}
@@ -416,7 +417,6 @@ const PublicTransportScreen: React.FC = () => {
               ]}
               onPress={() => {
                 setPreference(pref.value);
-                // Clear values for inputs that will be hidden to avoid stale constraints.
                 if (pref.value !== PublicTransportPreference.LOWEST_FARE) {
                   setBudget('');
                 }
@@ -427,7 +427,6 @@ const PublicTransportScreen: React.FC = () => {
             >
               <View style={[styles.preferenceIconWrap, isActive && styles.preferenceIconWrapActive]}>
                 <MaterialCommunityIcons
-                  // Type widening is fine here; icons are constrained by our array.
                   name={pref.icon as any}
                   size={26}
                   color={isActive ? colors.textPrimary : colors.textSecondary}
@@ -460,6 +459,8 @@ const PublicTransportScreen: React.FC = () => {
                   value={budget}
                   onChangeText={setBudget}
                   placeholder="Optional (e.g. 150)"
+                  placeholderTextColor={colors.textLight}
+                  selectionColor={colors.primary}
                 />
               </View>
             )}
@@ -473,6 +474,8 @@ const PublicTransportScreen: React.FC = () => {
                   value={maxTransfers}
                   onChangeText={setMaxTransfers}
                   placeholder="e.g. 3"
+                  placeholderTextColor={colors.textLight}
+                  selectionColor={colors.primary}
                 />
               </View>
             )}
@@ -671,7 +674,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.gray6,
     borderRadius: borderRadius.lg,
     paddingHorizontal: 12,
-    paddingVertical: 10
+    paddingVertical: 10,
+    color: colors.textPrimary
   },
   modesRow: {
     flexDirection: 'row',

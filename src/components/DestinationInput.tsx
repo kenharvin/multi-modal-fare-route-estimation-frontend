@@ -108,7 +108,7 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
         )}
         {searchText.length > 0 && (
           <TouchableOpacity onPress={handleClear} style={styles.clearButton}>
-            <Text>X</Text>
+            <Text style={styles.clearButtonText}>X</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -123,7 +123,7 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
                 style={styles.suggestionItem}
                 onPress={() => handleSelectLocation(item)}
               >
-                <Text>PIN</Text>
+                <Text style={styles.suggestionPinText}>PIN</Text>
                 <View style={styles.suggestionInfo}>
                   <Text style={styles.suggestionName}>{item.name}</Text>
                   {item.address && (
@@ -177,6 +177,10 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   clearButton: {
     padding: spacing.xs
   },
+  clearButtonText: {
+    color: colors.textSecondary,
+    fontWeight: '700'
+  },
   pinButton: {
     width: 34,
     height: 34,
@@ -208,6 +212,11 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   suggestionInfo: {
     flex: 1,
     marginLeft: spacing.md
+  },
+  suggestionPinText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.sm,
+    fontWeight: '700'
   },
   suggestionName: {
     fontSize: fontSize.md,

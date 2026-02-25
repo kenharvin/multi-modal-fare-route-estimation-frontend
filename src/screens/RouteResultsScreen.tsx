@@ -55,7 +55,6 @@ const RouteResultsScreen: React.FC = () => {
         return transferDelta || timeDelta || fareDelta;
       }
 
-      // balanced / recommended: prioritize fuzzy score, then prefer quicker routes on ties.
       const fuzzyA = Number(a.fuzzyScore || 0);
       const fuzzyB = Number(b.fuzzyScore || 0);
       const fuzzyDelta = fuzzyB - fuzzyA;
@@ -64,7 +63,7 @@ const RouteResultsScreen: React.FC = () => {
     return sorted;
   }, [preference]);
 
-  const sheetProgress = useRef(new Animated.Value(1)).current; // 0=collapsed, 1=expanded
+  const sheetProgress = useRef(new Animated.Value(1)).current;
   const isExpandedRef = useRef<boolean>(true);
   const winH = Dimensions.get('window').height;
   const sheetCollapsedH = 220;
@@ -174,6 +173,45 @@ const RouteResultsScreen: React.FC = () => {
     return selectedRouteGeometry?.id === selectedRouteId ? selectedRouteGeometry : base;
   }, [routes, selectedRouteGeometry, selectedRouteId]);
 
+  const constraintNotice = useMemo(() => {
+    for (const routeItem of routes) {
+      if (routeItem.constraintNotice) return routeItem.constraintNotice;
+    }
+    return null;
+  }, [routes]);
+
+  const constraintBanner = useMemo(() => {
+    if (!constraintNotice) return null;
+    const normalized = String(constraintNotice || '').trim();
+    const lower = normalized.toLowerCase();
+
+    if (lower.includes('within budget') || lower.includes('cheapest route')) {
+      return {
+        title: 'Budget preference not fully met',
+        text: 'No routes are available within your current budget for this trip. Showing the closest affordable options available right now.'
+      };
+    }
+
+    if (lower.includes('transfer')) {
+      return {
+        title: 'Transfer preference not fully met',
+        text: 'No route currently matches your transfer limit for this trip. Showing the best nearby options with slightly more transfers.'
+      };
+    }
+
+    if (lower.includes('walking limits') || lower.includes('max_walk_leg_km') || lower.includes('max_total_walk_km')) {
+      return {
+        title: 'Route availability is limited',
+        text: 'No route currently matches all limits for this trip. Showing the closest available options right now.'
+      };
+    }
+
+    return {
+      title: 'Preference not fully met',
+      text: 'No route currently matches all selected preferences exactly. Showing the best available options for this trip.'
+    };
+  }, [constraintNotice]);
+
   const shouldHideMapWhilePreparingRoute = useMemo(() => {
     if (!selectedRouteId) return false;
     if (isGeometryLoading) return true;
@@ -203,7 +241,6 @@ const RouteResultsScreen: React.FC = () => {
   const loadRoutes = useCallback(async () => {
     try {
       setIsLoading(true);
-      // Quick reachability check to avoid confusing network errors
       const ok = await pingBackend();
       if (!ok) {
         if (!isMountedRef.current) return;
@@ -232,7 +269,6 @@ const RouteResultsScreen: React.FC = () => {
   }, [budget, destination, maxTransfers, origin, preference, preferredModes, setIsLoading, sortRoutesByPreference]);
 
   useEffect(() => {
-    // Guard against duplicate fetches caused by re-mounts or fast refresh
     if (hasFetchedRef.current) return;
     hasFetchedRef.current = true;
     void loadRoutes();
@@ -240,8 +276,6 @@ const RouteResultsScreen: React.FC = () => {
 
   const handleSelectRoute = useCallback(async (route: Route) => {
     setSelectedRouteId(route.id);
-    // Fetch accurate polylines on demand (on tap).
-    // Even if compact mode returned preview geometry, we still fetch full per-leg geometry once.
     try {
       const isSameSelection = selectedRouteId === route.id;
       const cached = geometryCacheRef.current.get(route.id);
@@ -253,8 +287,6 @@ const RouteResultsScreen: React.FC = () => {
 
       setSelectedRouteGeometry(null);
       setIsGeometryLoading(true);
-      // If the user taps the already-selected route again, treat it as a manual refresh.
-      // This helps when backend geometry/caches have changed.
       const updated = await fetchRouteGeometry(route);
       if (!isMountedRef.current) return;
       cacheRouteGeometry(updated);
@@ -323,7 +355,6 @@ const RouteResultsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Map as full-screen background */}
       <View style={StyleSheet.absoluteFillObject}>
         {shouldHideMapWhilePreparingRoute ? (
           <View style={styles.mapPreparationContainer}>
@@ -341,7 +372,6 @@ const RouteResultsScreen: React.FC = () => {
         )}
       </View>
 
-      {/* Bottom sheet: expands as user scrolls */}
       <Animated.View style={[styles.sheet, { height: sheetHeight }]} {...topCardPanResponder.panHandlers}>
         <Pressable
           style={styles.sheetHandleWrap}
@@ -387,13 +417,23 @@ const RouteResultsScreen: React.FC = () => {
             if (y <= 0) collapseSheet();
           }}
           ListHeaderComponent={
-            shouldHideMapWhilePreparingRoute ? (
-              <View style={styles.statusCard}>
-                <Text style={styles.statusTitle}>Preparing route on map…</Text>
-                <Text style={styles.statusText}>
-                  Polylines are still rendering. Please wait a moment before switching routes.
-                </Text>
-              </View>
+            (shouldHideMapWhilePreparingRoute || !!constraintBanner) ? (
+              <>
+                {!!constraintBanner && (
+                  <View style={styles.constraintCard}>
+                    <Text style={styles.constraintTitle}>{constraintBanner.title}</Text>
+                    <Text style={styles.constraintText}>{constraintBanner.text}</Text>
+                  </View>
+                )}
+                {shouldHideMapWhilePreparingRoute && (
+                  <View style={styles.statusCard}>
+                    <Text style={styles.statusTitle}>Preparing route on map…</Text>
+                    <Text style={styles.statusText}>
+                      Polylines are still rendering. Please wait a moment before switching routes.
+                    </Text>
+                  </View>
+                )}
+              </>
             ) : null
           }
         />
@@ -518,6 +558,24 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.xs,
   },
   statusText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+  },
+  constraintCard: {
+    backgroundColor: colors.gray7,
+    borderColor: colors.gray5,
+    borderWidth: 1,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: borderRadius.xl,
+  },
+  constraintTitle: {
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  constraintText: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
   },

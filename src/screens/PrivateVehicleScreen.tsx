@@ -66,7 +66,7 @@ const PrivateVehicleScreen: React.FC = () => {
   
   const [vehicle, setVehicle] = useState<Vehicle>({
     category: VehicleCategory.SEDAN,
-    fuelEfficiency: 12 // default km/l
+    fuelEfficiency: 12
   });
   const [fuelPrice, setFuelPrice] = useState<string>('60');
   const [useCustomFuelPrice, setUseCustomFuelPrice] = useState<boolean>(false);
@@ -209,7 +209,6 @@ const PrivateVehicleScreen: React.FC = () => {
         if (fuelOptionsRows.length > 0) {
           setFuelPriceOptions(fuelOptionsRows);
           let defaultFuel = fuelOptionsRows.find((row) => row.is_default) || fuelOptionsRows[0];
-          // If vehicle is motorcycle, never select diesel
           if (vehicle.category === VehicleCategory.MOTORCYCLE && defaultFuel.fuel_type === 'diesel') {
             const nonDiesel = fuelOptionsRows.find((row) => row.fuel_type !== 'diesel');
             if (nonDiesel) defaultFuel = nonDiesel;
@@ -265,7 +264,6 @@ const PrivateVehicleScreen: React.FC = () => {
     }));
     setFuelPrice(String(selectedAdminFuelPrice || 0));
 
-    // If motorcycle is selected and diesel is selected, auto-switch to a non-diesel fuel type
     if (selectedVehicleCategory.value === VehicleCategory.MOTORCYCLE && selectedFuelType === 'diesel') {
       const nonDiesel = fuelPriceOptions.find((row) => row.fuel_type !== 'diesel');
       if (nonDiesel) {

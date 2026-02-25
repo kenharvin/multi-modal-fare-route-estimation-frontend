@@ -62,6 +62,7 @@ export interface Route {
   totalDistance: number;
   totalTransfers: number;
   fuzzyScore?: number;
+  constraintNotice?: string;
 }
 
 // Trip plan with multiple destinations
