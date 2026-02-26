@@ -44,9 +44,9 @@ jobs:
       - name: Generate Android project
         run: npx expo prebuild --platform android --non-interactive --no-install
 
-      - name: Build APK (release, ARM64 only)
+      - name: Build APK (release, universal)
         working-directory: android
-        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a -x lint -x lintVitalAnalyzeRelease --no-daemon
+        run: ./gradlew assembleRelease -x lint -x lintVitalAnalyzeRelease --no-daemon
 
       - name: Resolve app version
         id: appmeta
@@ -79,7 +79,7 @@ jobs:
           set -euo pipefail
 
           TAG="respondent-latest"
-          TITLE="Respondent APK (Latest)"
+          TITLE="NaviGO App (Latest Release)"
           NOTES="Latest release APK for respondents from workflow run #${{ github.run_number }} (v${{ steps.appmeta.outputs.version }})."
           APK_PATH="${{ steps.apk.outputs.apk_path }}"
           APK_FILENAME="${{ steps.appmeta.outputs.apk_filename }}"
