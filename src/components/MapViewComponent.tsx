@@ -93,6 +93,8 @@ interface MapViewComponentProps {
     popupTitle?: string;
     color?: string;
   }[];
+  /** Optional guidance text shown in the same instruction banner area when no pin mode is active. */
+  persistentInstructionText?: string | null;
 }
 
 const MapViewComponent: React.FC<MapViewComponentProps> = ({
@@ -114,7 +116,8 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
   fitBoundsMaxZoom,
   boundaryMode = 'none',
   hideSelectionControls = false,
-  instructionMarkers = []
+  instructionMarkers = [],
+  persistentInstructionText = null
 }) => {
   const { colors, isDark } = useThemeMode();
   const styles = useMemo(() => createMapViewComponentStyles(colors), [colors]);
@@ -1722,10 +1725,12 @@ const MapViewComponent: React.FC<MapViewComponentProps> = ({
         </View>
       )}
 
-      {(selectingOrigin || selectingDestination || selectingStopover) && (
+      {(selectingOrigin || selectingDestination || selectingStopover || !!persistentInstructionText) && (
         <View style={styles.instructionBanner}>
           <Text style={styles.instructionText}>
-            Please pin {selectingOrigin ? 'origin' : selectingDestination ? 'destination' : 'stopover'} on the map
+            {selectingOrigin || selectingDestination || selectingStopover
+              ? `Please pin ${selectingOrigin ? 'origin' : selectingDestination ? 'destination' : 'stopover'} on the map`
+              : persistentInstructionText}
           </Text>
         </View>
       )}

@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList } from 'react-native';
 import { Location } from '@/types';
 import { searchStops } from '@services/api';
-import { borderRadius, fontSize, shadows, spacing, type ThemeColors } from '@/utils/theme';
 import { useThemeMode } from '@context/ThemeContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { createDestinationInputStyles } from '@/styles/components/destinationInput.styles';
 interface DestinationInputProps {
   label: string;
   value: Location | null;
@@ -25,7 +25,7 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
   pinColor
 }) => {
   const { colors } = useThemeMode();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createDestinationInputStyles(colors), [colors]);
 
   const [searchText, setSearchText] = useState<string>(value?.name || '');
   const [suggestions, setSuggestions] = useState<Location[]>([]);
@@ -139,96 +139,6 @@ const DestinationInput: React.FC<DestinationInputProps> = ({
     </View>
   );
 };
-
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: {
-    marginBottom: spacing.lg
-  },
-  label: {
-    fontSize: fontSize.sm,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-    letterSpacing: 0.3
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    borderColor: colors.gray6,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    ...shadows.small
-  },
-  leadingPin: {
-    marginRight: spacing.sm
-  },
-  icon: {
-    marginRight: 8
-  },
-  input: {
-    flex: 1,
-    fontSize: fontSize.lg,
-    color: colors.textPrimary,
-    paddingVertical: spacing.md
-  },
-  clearButton: {
-    padding: spacing.xs
-  },
-  clearButtonText: {
-    color: colors.textSecondary,
-    fontWeight: '700'
-  },
-  pinButton: {
-    width: 34,
-    height: 34,
-    borderRadius: borderRadius.round,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primaryLight,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    marginLeft: spacing.xs,
-    marginRight: spacing.xs
-  },
-  suggestionsContainer: {
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.xl,
-    marginTop: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.gray6,
-    maxHeight: 200,
-    ...shadows.medium
-  },
-  suggestionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray6
-  },
-  suggestionInfo: {
-    flex: 1,
-    marginLeft: spacing.md
-  },
-  suggestionPinText: {
-    color: colors.textSecondary,
-    fontSize: fontSize.sm,
-    fontWeight: '700'
-  },
-  suggestionName: {
-    fontSize: fontSize.md,
-    color: colors.textPrimary,
-    fontWeight: '500'
-  },
-  suggestionAddress: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs
-  }
-});
 
 export default DestinationInput;
 

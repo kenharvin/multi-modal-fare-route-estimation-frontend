@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Pressable, ScrollView, Text, TouchableOpacity, View, PanResponder } from 'react-native';
+import { Alert, Animated, Dimensions, Modal, Pressable, ScrollView, Text, TouchableOpacity, View, PanResponder } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
@@ -75,9 +75,11 @@ const PrivateVehicleScreen: React.FC = () => {
   const [fuelPriceOptions, setFuelPriceOptions] = useState<PrivateFuelPriceOption[]>(FALLBACK_FUEL_PRICE_OPTIONS);
   const [selectedFuelType, setSelectedFuelType] = useState<string>('gasoline_ron91');
   const [stopoverLocations, setStopoverLocations] = useState<(Location | null)[]>([]);
-  const [showMap, setShowMap] = useState<boolean>(false);
+  const [showMap, setShowMap] = useState<boolean>(true);
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
-  const [locationPickMode, setLocationPickMode] = useState<'origin' | 'destination' | null>(null);
+  const [locationPickMode, setLocationPickMode] = useState<'origin' | 'destination' | null>('origin');
+  const [manualSearchEnabled, setManualSearchEnabled] = useState<boolean>(false);
+  const [showManualSearchConfirm, setShowManualSearchConfirm] = useState<boolean>(false);
   const [pendingStopoverIndex, setPendingStopoverIndex] = useState<number | null>(null);
   const [preferences, setPreferences] = useState<DrivingPreferences>({
     preferShortest: false
@@ -344,7 +346,7 @@ const PrivateVehicleScreen: React.FC = () => {
 
   const handleOriginSelectedFromMap = (location: Location) => {
     setSelectedOrigin(location);
-    setLocationPickMode(null);
+    setLocationPickMode('destination');
   };
 
   const handleDestinationSelectedFromMap = (location: Location) => {
@@ -385,6 +387,11 @@ const PrivateVehicleScreen: React.FC = () => {
 
   const renderLocationForm = (opts?: { compact?: boolean }) => {
     const compact = !!opts?.compact;
+
+    const handleEnableManualSearch = () => {
+      setShowManualSearchConfirm(true);
+    };
+
     return (
       <>
         {!compact && <Text style={styles.sectionTitle}>Locations</Text>}
@@ -405,24 +412,68 @@ const PrivateVehicleScreen: React.FC = () => {
           </Text>
         )}
 
-        <DestinationInput
-          label="Origin *"
-          value={selectedOrigin}
-          onValueChange={setSelectedOrigin}
-          placeholder="Starting point"
-          searchProvider={(q) => searchPois(q, 10, currentLocation)}
-          onPinPress={() => handleRequestLocationPickFromMap('origin')}
-          pinColor="#27ae60"
-        />
-        <DestinationInput
-          label="Destination *"
-          value={selectedDestination}
-          onValueChange={setSelectedDestination}
-          placeholder="Final destination"
-          searchProvider={(q) => searchPois(q, 10, currentLocation)}
-          onPinPress={() => handleRequestLocationPickFromMap('destination')}
-          pinColor="#e74c3c"
-        />
+        {!manualSearchEnabled ? (
+          <View style={styles.pinFirstCard}>
+            <Text style={styles.pinFirstTitle}>Pin Location is Default</Text>
+            <Text style={styles.pinFirstText}>
+              Tap the map to pin your origin and destination. After selecting origin, we will guide you to pin destination next.
+            </Text>
+            <View style={styles.pinActionRow}>
+              <Button
+                mode="outlined"
+                icon="map-marker"
+                onPress={() => handleRequestLocationPickFromMap('origin')}
+                style={styles.pinActionButton}
+                labelStyle={styles.outlinedButtonLabel}
+              >
+                Pin Origin
+              </Button>
+              <Button
+                mode="outlined"
+                icon="map-marker-check"
+                onPress={() => handleRequestLocationPickFromMap('destination')}
+                style={styles.pinActionButton}
+                labelStyle={styles.outlinedButtonLabel}
+              >
+                Pin Destination
+              </Button>
+            </View>
+            <Text style={styles.manualSearchNote}>
+              Tap the button below to search for origin and destination.
+            </Text>
+            <TouchableOpacity
+              onPress={handleEnableManualSearch}
+              style={styles.manualSearchButton}
+              accessibilityRole="button"
+              accessibilityLabel="Search for Origin and Destination Manually"
+            >
+              <Text style={styles.manualSearchButtonLabel}>
+                Search for Origin and Destination Manually
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <DestinationInput
+              label="Origin *"
+              value={selectedOrigin}
+              onValueChange={setSelectedOrigin}
+              placeholder="Starting point"
+              searchProvider={(q) => searchPois(q, 10, currentLocation)}
+              onPinPress={() => handleRequestLocationPickFromMap('origin')}
+              pinColor="#27ae60"
+            />
+            <DestinationInput
+              label="Destination *"
+              value={selectedDestination}
+              onValueChange={setSelectedDestination}
+              placeholder="Final destination"
+              searchProvider={(q) => searchPois(q, 10, currentLocation)}
+              onPinPress={() => handleRequestLocationPickFromMap('destination')}
+              pinColor="#e74c3c"
+            />
+          </>
+        )}
 
         <Text style={styles.sectionTitle}>Driving Preference</Text>
         {stopoverLocations.length < MAX_STOPOVERS && (
@@ -521,31 +572,77 @@ const PrivateVehicleScreen: React.FC = () => {
     );
   };
 
+  const manualSearchConfirmModal = (
+    <Modal
+      visible={showManualSearchConfirm}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowManualSearchConfirm(false)}
+    >
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Switch to Manual Search?</Text>
+          <Text style={styles.modalMessage}>
+            Pinning locations on the map is still recommended because route and stop data can be limited in some areas. Would you like to continue?
+          </Text>
+          <View style={styles.modalButtonRow}>
+            <Button
+              mode="outlined"
+              onPress={() => setShowManualSearchConfirm(false)}
+              style={styles.modalCancelButton}
+              labelStyle={styles.outlinedButtonLabel}
+            >
+              Stay with Pin Location
+            </Button>
+            <Button
+              mode="contained"
+              onPress={() => {
+                setManualSearchEnabled(true);
+                setShowManualSearchConfirm(false);
+              }}
+              style={styles.modalConfirmButton}
+              labelStyle={styles.calculateButtonLabel}
+            >
+              Proceed
+            </Button>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
   if (showMap) {
     return (
-      <View style={styles.mapScreen}>
-        <MapViewComponent
-          origin={selectedOrigin}
-          destination={selectedDestination}
-          onOriginSelect={handleOriginSelectedFromMap}
-          onDestinationSelect={handleDestinationSelectedFromMap}
-          stopovers={stopovers}
-          onStopoverSelect={handleStopoverSelectedFromMap}
-          autoSelectMode={locationPickMode || (pendingStopoverIndex !== null ? 'stopover' : null)}
-          hideSelectionControls
-          boundaryMode="private"
-        />
+      <>
+        {manualSearchConfirmModal}
+        <View style={styles.mapScreen}>
+          <MapViewComponent
+            origin={selectedOrigin}
+            destination={selectedDestination}
+            onOriginSelect={handleOriginSelectedFromMap}
+            onDestinationSelect={handleDestinationSelectedFromMap}
+            stopovers={stopovers}
+            onStopoverSelect={handleStopoverSelectedFromMap}
+            autoSelectMode={locationPickMode || (pendingStopoverIndex !== null ? 'stopover' : null)}
+            hideSelectionControls
+            boundaryMode="private"
+            persistentInstructionText={
+              !sheetExpanded && hasRequiredLocations && !locationPickMode && pendingStopoverIndex === null
+                ? 'Please pull up or tap the upper part of the card below to set other preferences.'
+                : null
+            }
+          />
 
-        <Animated.View
-          style={[
-            styles.bottomSheet,
-            {
-              height: sheetExpandedHeight,
-              transform: [{ translateY: sheetTranslateY }],
-            },
-          ]}
-          {...topCardPanResponder.panHandlers}
-        >
+          <Animated.View
+            style={[
+              styles.bottomSheet,
+              {
+                height: sheetExpandedHeight,
+                transform: [{ translateY: sheetTranslateY }],
+              },
+            ]}
+            {...topCardPanResponder.panHandlers}
+          >
           <Pressable
             style={styles.sheetHandleArea}
             onPress={toggleSheet}
@@ -673,25 +770,29 @@ const PrivateVehicleScreen: React.FC = () => {
               </Button>
             </View>
           </ScrollView>
-        </Animated.View>
-      </View>
+          </Animated.View>
+        </View>
+      </>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Private Vehicle Planner</Text>
-        <Text style={styles.subtitle}>Calculate fuel costs and plan your route</Text>
-      </View>
+    <>
+      {manualSearchConfirmModal}
 
-      <View style={styles.section}>
-        {renderLocationForm()}
-      </View>
+      <ScrollView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Private Vehicle Planner</Text>
+          <Text style={styles.subtitle}>Calculate fuel costs and plan your route</Text>
+        </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Vehicle Information</Text>
-        <View style={styles.vehiclesContainer}>
+        <View style={styles.section}>
+          {renderLocationForm()}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Vehicle Information</Text>
+          <View style={styles.vehiclesContainer}>
           {vehicleCategories.map((cat) => (
             <TouchableOpacity
               key={cat.value}
@@ -783,28 +884,29 @@ const PrivateVehicleScreen: React.FC = () => {
             color={colors.primary}
           />
         </View>
-      </View>
+        </View>
 
-      <View style={styles.section}>
-        {renderRoutingPreferenceControls()}
-      </View>
+        <View style={styles.section}>
+          {renderRoutingPreferenceControls()}
+        </View>
 
-      <View style={styles.footer}>
-        {!hasRequiredLocations && (
-          <Text style={styles.requiredHint}>{missingLocationInstruction}</Text>
-        )}
-        <Button
-          mode="contained"
-          onPress={handleCalculateRoute}
-          disabled={!hasRequiredLocations}
-          style={styles.calculateButton}
-          contentStyle={styles.calculateButtonContent}
-          labelStyle={styles.calculateButtonLabel}
-        >
-          Calculate Route & Cost
-        </Button>
-      </View>
-    </ScrollView>
+        <View style={styles.footer}>
+          {!hasRequiredLocations && (
+            <Text style={styles.requiredHint}>{missingLocationInstruction}</Text>
+          )}
+          <Button
+            mode="contained"
+            onPress={handleCalculateRoute}
+            disabled={!hasRequiredLocations}
+            style={styles.calculateButton}
+            contentStyle={styles.calculateButtonContent}
+            labelStyle={styles.calculateButtonLabel}
+          >
+            Calculate Route & Cost
+          </Button>
+        </View>
+      </ScrollView>
+    </>
   );
 };
 

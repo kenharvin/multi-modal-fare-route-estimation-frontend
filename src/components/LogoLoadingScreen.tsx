@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image, Text, View } from 'react-native';
 import { useThemeMode } from '@context/ThemeContext';
-import { fontSize, spacing, type ThemeColors } from '@/utils/theme';
+import { createLogoLoadingScreenStyles } from '@/styles/components/logoLoadingScreen.styles';
 
 const LOGO = require('../assets/images/628106684_902319769440556_4828750431026813083_n-removebg-preview.png');
 
@@ -11,7 +11,7 @@ type Props = {
 
 const LogoLoadingScreen: React.FC<Props> = ({ message }) => {
   const { colors } = useThemeMode();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createLogoLoadingScreenStyles(colors), [colors]);
 
   const floatAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(0)).current;
@@ -96,37 +96,5 @@ const LogoLoadingScreen: React.FC<Props> = ({ message }) => {
     </View>
   );
 };
-
-const createStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.primary,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingHorizontal: spacing.lg
-    },
-    logoWrap: {
-      width: 220,
-      height: 220,
-      marginBottom: spacing.md
-    },
-    logo: {
-      width: '100%',
-      height: '100%'
-    },
-    title: {
-      color: colors.textWhite,
-      fontSize: 34,
-      fontWeight: '800',
-      letterSpacing: 0.5
-    },
-    subtitle: {
-      marginTop: spacing.sm,
-      color: colors.textWhite,
-      fontSize: fontSize.lg,
-      opacity: 0.92
-    }
-  });
 
 export default LogoLoadingScreen;

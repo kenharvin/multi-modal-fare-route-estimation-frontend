@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, PanResponder } from 'react-native';
+import { Alert, Animated, Dimensions, Modal, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View, PanResponder } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '@navigation/types';
@@ -10,21 +10,23 @@ import DestinationInput from '@components/DestinationInput';
 import MapViewComponent from '@components/MapViewComponent';
 import { Button } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { borderRadius, fontSize, shadows, spacing, type ThemeColors } from '@/utils/theme';
 import { useThemeMode } from '@context/ThemeContext';
+import { createPublicTransportScreenStyles } from '@/styles/screens/publicTransportScreen.styles';
 type PublicTransportNavigationProp = StackNavigationProp<RootStackParamList, 'PublicTransport'>;
 
 const PublicTransportScreen: React.FC = () => {
   const { colors } = useThemeMode();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createPublicTransportScreenStyles(colors), [colors]);
 
   const navigation = useNavigation<PublicTransportNavigationProp>();
   const { selectedOrigin, selectedDestination, setSelectedOrigin, setSelectedDestination } = useLocation();
   const { setIsLoading } = useApp();
   const [preference, setPreference] = useState<PublicTransportPreference>(PublicTransportPreference.SHORTEST_TIME);
-  const [showMap, setShowMap] = useState<boolean>(false);
+  const [showMap, setShowMap] = useState<boolean>(true);
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
-  const [locationPickMode, setLocationPickMode] = useState<'origin' | 'destination' | null>(null);
+  const [locationPickMode, setLocationPickMode] = useState<'origin' | 'destination' | null>('origin');
+  const [manualSearchEnabled, setManualSearchEnabled] = useState<boolean>(false);
+  const [showManualSearchConfirm, setShowManualSearchConfirm] = useState<boolean>(false);
   const [budget, setBudget] = useState<string>('');
   const [maxTransfers, setMaxTransfers] = useState<string>('');
   const [preferredModes, setPreferredModes] = useState<string[]>(['jeepney','bus','lrt','mrt','pnr']);
@@ -168,7 +170,7 @@ const PublicTransportScreen: React.FC = () => {
 
   const handleOriginSelectedFromMap = (location: Location) => {
     setSelectedOrigin(location);
-    setLocationPickMode(null);
+    setLocationPickMode('destination');
   };
 
   const handleDestinationSelectedFromMap = (location: Location) => {
@@ -178,6 +180,11 @@ const PublicTransportScreen: React.FC = () => {
 
   const renderLocationForm = (opts?: { compact?: boolean }) => {
     const compact = !!opts?.compact;
+
+    const handleEnableManualSearch = () => {
+      setShowManualSearchConfirm(true);
+    };
+
     return (
       <>
         {!compact && <Text style={styles.sectionTitle}>Locations</Text>}
@@ -198,22 +205,66 @@ const PublicTransportScreen: React.FC = () => {
           </Text>
         )}
 
-        <DestinationInput
-          label="Origin *"
-          value={selectedOrigin}
-          onValueChange={setSelectedOrigin}
-          placeholder="Where are you starting from?"
-          onPinPress={() => handleRequestLocationPickFromMap('origin')}
-          pinColor="#27ae60"
-        />
-        <DestinationInput
-          label="Destination *"
-          value={selectedDestination}
-          onValueChange={setSelectedDestination}
-          placeholder="Where are you going?"
-          onPinPress={() => handleRequestLocationPickFromMap('destination')}
-          pinColor="#e74c3c"
-        />
+        {!manualSearchEnabled ? (
+          <View style={styles.pinFirstCard}>
+            <Text style={styles.pinFirstTitle}>Pin Location is Default</Text>
+            <Text style={styles.pinFirstText}>
+              Tap the map to pin your origin and destination. After selecting origin, we will guide you to pin destination next.
+            </Text>
+            <View style={styles.pinActionRow}>
+              <Button
+                mode="outlined"
+                icon="map-marker"
+                onPress={() => handleRequestLocationPickFromMap('origin')}
+                style={styles.pinActionButton}
+                labelStyle={styles.outlinedButtonLabel}
+              >
+                Pin Origin
+              </Button>
+              <Button
+                mode="outlined"
+                icon="map-marker-check"
+                onPress={() => handleRequestLocationPickFromMap('destination')}
+                style={styles.pinActionButton}
+                labelStyle={styles.outlinedButtonLabel}
+              >
+                Pin Destination
+              </Button>
+            </View>
+            <Text style={styles.manualSearchNote}>
+              Tap the button below to search for origin and destination.
+            </Text>
+            <TouchableOpacity
+              onPress={handleEnableManualSearch}
+              style={styles.manualSearchButton}
+              accessibilityRole="button"
+              accessibilityLabel="Search for Origin and Destination Manually"
+            >
+              <Text style={styles.manualSearchButtonLabel}>
+                Search for Origin and Destination Manually
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <DestinationInput
+              label="Origin *"
+              value={selectedOrigin}
+              onValueChange={setSelectedOrigin}
+              placeholder="Where are you starting from?"
+              onPinPress={() => handleRequestLocationPickFromMap('origin')}
+              pinColor="#27ae60"
+            />
+            <DestinationInput
+              label="Destination *"
+              value={selectedDestination}
+              onValueChange={setSelectedDestination}
+              placeholder="Where are you going?"
+              onPinPress={() => handleRequestLocationPickFromMap('destination')}
+              pinColor="#e74c3c"
+            />
+          </>
+        )}
       </>
     );
   };
@@ -324,29 +375,75 @@ const PublicTransportScreen: React.FC = () => {
     );
   };
 
+  const manualSearchConfirmModal = (
+    <Modal
+      visible={showManualSearchConfirm}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowManualSearchConfirm(false)}
+    >
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Switch to Manual Search?</Text>
+          <Text style={styles.modalMessage}>
+            Pinning locations on the map is still recommended because route and stop data can be limited in some areas. Would you like to continue?
+          </Text>
+          <View style={styles.modalButtonRow}>
+            <Button
+              mode="outlined"
+              onPress={() => setShowManualSearchConfirm(false)}
+              style={styles.modalCancelButton}
+              labelStyle={styles.outlinedButtonLabel}
+            >
+              Stay with Pin Location
+            </Button>
+            <Button
+              mode="contained"
+              onPress={() => {
+                setManualSearchEnabled(true);
+                setShowManualSearchConfirm(false);
+              }}
+              style={styles.modalConfirmButton}
+              labelStyle={styles.findButtonLabel}
+            >
+              Proceed
+            </Button>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
   if (showMap) {
     return (
-      <View style={styles.mapScreen}>
-        <MapViewComponent
-          origin={selectedOrigin}
-          destination={selectedDestination}
-          onOriginSelect={handleOriginSelectedFromMap}
-          onDestinationSelect={handleDestinationSelectedFromMap}
-          autoSelectMode={locationPickMode}
-          hideSelectionControls
-          boundaryMode="public"
-        />
+      <>
+        {manualSearchConfirmModal}
+        <View style={styles.mapScreen}>
+          <MapViewComponent
+            origin={selectedOrigin}
+            destination={selectedDestination}
+            onOriginSelect={handleOriginSelectedFromMap}
+            onDestinationSelect={handleDestinationSelectedFromMap}
+            autoSelectMode={locationPickMode}
+            hideSelectionControls
+            boundaryMode="public"
+            persistentInstructionText={
+              !sheetExpanded && hasRequiredLocations && !locationPickMode
+                ? 'Please pull up or tap the upper part of the card below to set other preferences.'
+                : null
+            }
+          />
 
-        <Animated.View
-          style={[
-            styles.bottomSheet,
-            {
-              height: sheetExpandedHeight,
-              transform: [{ translateY: sheetTranslateY }],
-            },
-          ]}
-          {...topCardPanResponder.panHandlers}
-        >
+          <Animated.View
+            style={[
+              styles.bottomSheet,
+              {
+                height: sheetExpandedHeight,
+                transform: [{ translateY: sheetTranslateY }],
+              },
+            ]}
+            {...topCardPanResponder.panHandlers}
+          >
           <Pressable
             style={styles.sheetHandleArea}
             onPress={toggleSheet}
@@ -386,25 +483,29 @@ const PublicTransportScreen: React.FC = () => {
               </Button>
             </View>
           </ScrollView>
-        </Animated.View>
-      </View>
+          </Animated.View>
+        </View>
+      </>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Public Transport Planner</Text>
-        <Text style={styles.subtitle}>Find the best routes for your journey</Text>
-      </View>
+    <>
+      {manualSearchConfirmModal}
 
-      <View style={styles.section}>
-        {renderLocationForm()}
-      </View>
+      <ScrollView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Public Transport Planner</Text>
+          <Text style={styles.subtitle}>Find the best routes for your journey</Text>
+        </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Preferences</Text>
-        <View style={styles.preferencesContainer}>
+        <View style={styles.section}>
+          {renderLocationForm()}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Preferences</Text>
+          <View style={styles.preferencesContainer}>
           {preferences.map((pref) => (
             (() => {
               const isActive = preference === pref.value;
@@ -502,263 +603,27 @@ const PublicTransportScreen: React.FC = () => {
             );
           })}
         </View>
-      </View>
+        </View>
 
-      <View style={styles.footer}>
-        {!hasRequiredLocations && (
-          <Text style={styles.requiredHint}>{missingLocationInstruction}</Text>
-        )}
-        <Button
-          mode="contained"
-          onPress={handleFindRoutes}
-          disabled={!hasRequiredLocations}
-          style={styles.findButton}
-          contentStyle={styles.findButtonContent}
-          labelStyle={styles.findButtonLabel}
-        >
-          Find Routes
-        </Button>
-      </View>
-    </ScrollView>
+        <View style={styles.footer}>
+          {!hasRequiredLocations && (
+            <Text style={styles.requiredHint}>{missingLocationInstruction}</Text>
+          )}
+          <Button
+            mode="contained"
+            onPress={handleFindRoutes}
+            disabled={!hasRequiredLocations}
+            style={styles.findButton}
+            contentStyle={styles.findButtonContent}
+            labelStyle={styles.findButtonLabel}
+          >
+            Find Routes
+          </Button>
+        </View>
+      </ScrollView>
+    </>
   );
 };
-
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  mapScreen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  bottomSheet: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.lg,
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    borderColor: colors.gray5,
-    ...shadows.small,
-  },
-  sheetHandleArea: {
-    alignItems: 'center',
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-  },
-  sheetHandle: {
-    width: 44,
-    height: 5,
-    borderRadius: borderRadius.round,
-    backgroundColor: colors.gray6,
-  },
-  sheetHint: {
-    marginTop: spacing.xs,
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-  },
-  sheetScroll: {
-    flex: 1,
-  },
-  sheetScrollContent: {
-    paddingBottom: spacing.xxl,
-  },
-  sheetSection: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
-  sheetDivider: {
-    height: 1,
-    backgroundColor: colors.gray6,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
-  },
-  sheetFooter: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
-  requiredHint: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-    backgroundColor: 'transparent',
-    borderWidth: 0
-  },
-  title: {
-    fontSize: fontSize.title,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-    textAlign: 'center'
-  },
-  subtitle: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    textAlign: 'center'
-  },
-  section: {
-    backgroundColor: colors.white,
-    padding: spacing.lg,
-    marginTop: spacing.md,
-    marginHorizontal: spacing.lg,
-    borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    borderColor: colors.gray5,
-    ...shadows.small
-  },
-  sectionTitle: {
-    fontSize: fontSize.xl,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: spacing.lg,
-    textAlign: 'center'
-  },
-  mapButtonHint: {
-    marginTop: spacing.sm,
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  hideMapButton: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
-    borderRadius: borderRadius.lg,
-    borderColor: colors.gray5,
-  },
-  outlinedButtonLabel: {
-    color: colors.textPrimary,
-    fontWeight: '600'
-  },
-  mapContainer: {
-    height: 300,
-    marginTop: spacing.lg,
-    borderRadius: borderRadius.lg,
-    overflow: 'hidden'
-  },
-  preferencesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: spacing.sm
-  },
-  inputRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 12
-  },
-  inputCol: {
-    flex: 1
-  },
-  inputLabel: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm
-  },
-  modesNote: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-  },
-  input: {
-    backgroundColor: colors.gray7,
-    borderWidth: 1,
-    borderColor: colors.gray6,
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: colors.textPrimary
-  },
-  modesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8
-  },
-  modeChip: {
-    borderWidth: 1,
-    borderColor: colors.gray5,
-    borderRadius: borderRadius.round,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: colors.gray7
-  },
-  modeChipActive: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primary
-  },
-  modeChipText: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary
-  },
-  modeChipTextActive: {
-    color: colors.textPrimary,
-    fontWeight: '700'
-  },
-  preferenceCard: {
-    width: '48%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.gray7,
-    borderRadius: borderRadius.xl,
-    borderWidth: 2,
-    borderColor: colors.gray5
-  },
-  preferenceCardActive: {
-    backgroundColor: colors.primaryLight,
-    borderColor: colors.primary
-  },
-  preferenceIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: borderRadius.round,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.gray6
-  },
-  preferenceIconWrapActive: {
-    borderColor: colors.primary
-  },
-  preferenceLabel: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    marginTop: spacing.sm,
-    textAlign: 'center',
-    fontWeight: '500'
-  },
-  preferenceLabelActive: {
-    color: colors.textPrimary,
-    fontWeight: '700'
-  },
-  footer: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xxl
-  },
-  findButton: {
-    borderRadius: borderRadius.xl,
-    backgroundColor: colors.primary
-  },
-  findButtonContent: {
-    paddingVertical: 8
-  },
-  findButtonLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.textWhite
-  }
-});
 
 export default PublicTransportScreen;
 

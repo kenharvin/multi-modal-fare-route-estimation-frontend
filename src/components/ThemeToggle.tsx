@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View } from 'react-native';
 import { Switch } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useThemeMode } from '@context/ThemeContext';
-import { spacing } from '@/utils/theme';
+import { themeToggleStyles as styles } from '@/styles/components/themeToggle.styles';
 
 const ThemeToggle: React.FC = () => {
   const { isDark, toggleMode, colors } = useThemeMode();
@@ -20,16 +20,5 @@ const ThemeToggle: React.FC = () => {
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  wrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: spacing.sm,
-  },
-  icon: {
-    marginRight: spacing.xs,
-  },
-});
 
 export default ThemeToggle;

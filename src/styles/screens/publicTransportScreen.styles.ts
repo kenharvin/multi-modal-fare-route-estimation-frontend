@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 import { borderRadius, fontSize, shadows, spacing, type ThemeColors } from '@/utils/theme';
 
-export const createPrivateVehicleScreenStyles = (colors: ThemeColors) =>
+export const createPublicTransportScreenStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -9,7 +9,7 @@ export const createPrivateVehicleScreenStyles = (colors: ThemeColors) =>
     },
     mapScreen: {
       flex: 1,
-      backgroundColor: colors.background
+      backgroundColor: colors.background,
     },
     bottomSheet: {
       position: 'absolute',
@@ -20,7 +20,7 @@ export const createPrivateVehicleScreenStyles = (colors: ThemeColors) =>
       borderRadius: borderRadius.xl,
       borderWidth: 1,
       borderColor: colors.gray5,
-      ...shadows.small
+      ...shadows.small,
     },
     sheetHandleArea: {
       alignItems: 'center',
@@ -65,10 +65,11 @@ export const createPrivateVehicleScreenStyles = (colors: ThemeColors) =>
       marginBottom: spacing.sm,
     },
     header: {
-      padding: spacing.lg,
-      marginHorizontal: spacing.lg,
-      marginTop: spacing.lg,
-      backgroundColor: 'transparent'
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.md,
+      backgroundColor: 'transparent',
+      borderWidth: 0
     },
     title: {
       fontSize: fontSize.title,
@@ -85,8 +86,8 @@ export const createPrivateVehicleScreenStyles = (colors: ThemeColors) =>
     section: {
       backgroundColor: colors.white,
       padding: spacing.lg,
+      marginTop: spacing.md,
       marginHorizontal: spacing.lg,
-      marginTop: spacing.lg,
       borderRadius: borderRadius.xl,
       borderWidth: 1,
       borderColor: colors.gray5,
@@ -96,13 +97,7 @@ export const createPrivateVehicleScreenStyles = (colors: ThemeColors) =>
       fontSize: fontSize.xl,
       fontWeight: '600',
       color: colors.textPrimary,
-      marginBottom: spacing.sm,
-      textAlign: 'center'
-    },
-    sectionSubtitle: {
-      fontSize: fontSize.sm,
-      color: colors.textSecondary,
-      marginBottom: spacing.md,
+      marginBottom: spacing.lg,
       textAlign: 'center'
     },
     mapButtonHint: {
@@ -215,174 +210,127 @@ export const createPrivateVehicleScreenStyles = (colors: ThemeColors) =>
       borderRadius: borderRadius.lg,
       borderColor: colors.gray5,
     },
-    addStopoverButton: {
-      borderRadius: borderRadius.xl,
-      borderColor: colors.primary,
-      marginBottom: spacing.lg,
-    },
     outlinedButtonLabel: {
       color: colors.textPrimary,
       fontWeight: '600'
     },
-    vehiclesContainer: {
+    mapContainer: {
+      height: 300,
+      marginTop: spacing.lg,
+      borderRadius: borderRadius.lg,
+      overflow: 'hidden'
+    },
+    preferencesContainer: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      marginBottom: spacing.md
+      justifyContent: 'space-between',
+      gap: spacing.sm
     },
-    fuelTypeScroll: {
-      marginBottom: spacing.md,
-    },
-    fuelTypeRow: {
+    inputRow: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
-      paddingHorizontal: spacing.xs,
+      gap: 12,
+      marginTop: 12
     },
-    fuelTypeButton: {
-      width: '100%',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.md,
-      backgroundColor: colors.gray7,
-      borderRadius: borderRadius.xl,
-      borderWidth: 2,
-      borderColor: colors.gray5,
+    inputCol: {
+      flex: 1
     },
-    fuelTypeButtonActive: {
-      backgroundColor: colors.primaryLight,
-      borderColor: colors.primary,
-    },
-    fuelTypeText: {
+    inputLabel: {
       fontSize: fontSize.sm,
       color: colors.textSecondary,
-      textAlign: 'center',
-      fontWeight: '500',
+      marginBottom: spacing.sm
     },
-    fuelTypeTextActive: {
+    modesNote: {
+      fontSize: fontSize.xs,
+      color: colors.textSecondary,
+      marginBottom: spacing.sm,
+    },
+    input: {
+      backgroundColor: colors.gray7,
+      borderWidth: 1,
+      borderColor: colors.gray6,
+      borderRadius: borderRadius.lg,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      color: colors.textPrimary
+    },
+    modesRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8
+    },
+    modeChip: {
+      borderWidth: 1,
+      borderColor: colors.gray5,
+      borderRadius: borderRadius.round,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      backgroundColor: colors.gray7
+    },
+    modeChipActive: {
+      backgroundColor: colors.primaryLight,
+      borderColor: colors.primary
+    },
+    modeChipText: {
+      fontSize: fontSize.sm,
+      color: colors.textSecondary
+    },
+    modeChipTextActive: {
       color: colors.textPrimary,
-      fontWeight: '700',
+      fontWeight: '700'
     },
-    vehicleCard: {
-      width: '30%',
+    preferenceCard: {
+      width: '48%',
       alignItems: 'center',
-      padding: spacing.md,
-      margin: 4,
+      justifyContent: 'center',
+      paddingVertical: spacing.lg,
+      paddingHorizontal: spacing.md,
       backgroundColor: colors.gray7,
       borderRadius: borderRadius.xl,
       borderWidth: 2,
       borderColor: colors.gray5
     },
-    vehicleCardActive: {
+    preferenceCardActive: {
       backgroundColor: colors.primaryLight,
       borderColor: colors.primary
     },
-    vehicleLabel: {
-      fontSize: fontSize.sm,
+    preferenceIconWrap: {
+      width: 44,
+      height: 44,
+      borderRadius: borderRadius.round,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.white,
+      borderWidth: 1,
+      borderColor: colors.gray6
+    },
+    preferenceIconWrapActive: {
+      borderColor: colors.primary
+    },
+    preferenceLabel: {
+      fontSize: fontSize.md,
       color: colors.textSecondary,
-      marginTop: spacing.xs,
+      marginTop: spacing.sm,
       textAlign: 'center',
       fontWeight: '500'
     },
-    vehicleLabelActive: {
+    preferenceLabelActive: {
       color: colors.textPrimary,
       fontWeight: '700'
     },
-    efficiencyText: {
-      fontSize: fontSize.xs,
-      color: colors.textLight,
-      marginTop: 2
-    },
-    input: {
-      marginBottom: spacing.md
-    },
-    fuelEfficiencyNote: {
-      fontSize: fontSize.sm,
-      color: colors.textSecondary,
-      marginTop: -spacing.sm,
-      marginBottom: spacing.md,
-      textAlign: 'left',
-    },
-    fuelPriceNote: {
-      fontSize: fontSize.sm,
-      color: colors.textSecondary,
-      marginTop: -spacing.sm,
-      marginBottom: spacing.md,
-      textAlign: 'left',
-    },
-    preferenceRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingVertical: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.gray6
-    },
-    preferenceInfo: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
-      minWidth: 0,
-      marginRight: spacing.sm,
-    },
-    preferenceText: {
-      fontSize: fontSize.lg,
-      color: colors.textPrimary,
-      marginLeft: spacing.md,
-      flexShrink: 1,
-      flexWrap: 'wrap',
-    },
-    routePreferenceRow: {
-      flexDirection: 'row',
-      gap: spacing.sm,
-      marginTop: spacing.xs,
-    },
-    routePreferenceButton: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.md,
-      borderRadius: borderRadius.xl,
-      borderWidth: 2,
-      borderColor: colors.gray5,
-      backgroundColor: colors.gray7,
-    },
-    routePreferenceButtonActive: {
-      borderColor: colors.primary,
-      backgroundColor: colors.primaryLight,
-    },
-    routePreferenceLabel: {
-      marginLeft: spacing.xs,
-      fontSize: fontSize.sm,
-      color: colors.textSecondary,
-      fontWeight: '500',
-      textAlign: 'center',
-    },
-    routePreferenceLabelActive: {
-      color: colors.textPrimary,
-      fontWeight: '700',
-    },
-    routePreferenceHint: {
-      marginTop: spacing.sm,
-      fontSize: fontSize.sm,
-      color: colors.textSecondary,
-      textAlign: 'center',
-    },
     footer: {
-      padding: spacing.lg,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
       paddingBottom: spacing.xxl
     },
-    calculateButton: {
+    findButton: {
       borderRadius: borderRadius.xl,
       backgroundColor: colors.primary
     },
-    calculateButtonContent: {
-      paddingVertical: spacing.sm
+    findButtonContent: {
+      paddingVertical: 8
     },
-    calculateButtonLabel: {
-      fontSize: fontSize.lg,
+    findButtonLabel: {
+      fontSize: 16,
       fontWeight: '600',
       color: colors.textWhite
     }
