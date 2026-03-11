@@ -5,6 +5,7 @@
   "build": {
     "preview": {
       "distribution": "internal",
+      "autoIncrement": true,
       "channel": "preview",
       "env": {
         "EXPO_PUBLIC_BACKEND_TARGET": "deployed",
@@ -20,6 +21,7 @@
     },
     "production": {
       "distribution": "store",
+      "autoIncrement": true,
       "channel": "production",
       "env": {
         "EXPO_PUBLIC_BACKEND_TARGET": "deployed",

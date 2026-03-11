@@ -66,7 +66,7 @@ const PrivateVehicleScreen: React.FC = () => {
   
   const [vehicle, setVehicle] = useState<Vehicle>({
     category: VehicleCategory.SEDAN,
-    fuelEfficiency: 12
+    fuelEfficiency: 16
   });
   const [fuelPrice, setFuelPrice] = useState<string>('60');
   const [useCustomFuelPrice, setUseCustomFuelPrice] = useState<boolean>(false);
@@ -74,6 +74,7 @@ const PrivateVehicleScreen: React.FC = () => {
   const [vehicleFuelSettings, setVehicleFuelSettings] = useState<PrivateVehicleFuelSetting[]>(FALLBACK_PRIVATE_FUEL_SETTINGS);
   const [fuelPriceOptions, setFuelPriceOptions] = useState<PrivateFuelPriceOption[]>(FALLBACK_FUEL_PRICE_OPTIONS);
   const [selectedFuelType, setSelectedFuelType] = useState<string>('gasoline_ron91');
+  const [isFuelEfficiencyManuallyEdited, setIsFuelEfficiencyManuallyEdited] = useState<boolean>(false);
   const [stopoverLocations, setStopoverLocations] = useState<(Location | null)[]>([]);
   const [showMap, setShowMap] = useState<boolean>(true);
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
@@ -259,22 +260,30 @@ const PrivateVehicleScreen: React.FC = () => {
 
   useEffect(() => {
     if (!selectedVehicleCategory) return;
+    if (isFuelEfficiencyManuallyEdited) return;
 
     setVehicle((prev) => ({
       ...prev,
       fuelEfficiency: selectedVehicleCategory.efficiency || prev.fuelEfficiency
     }));
-    setFuelPrice(String(selectedAdminFuelPrice || 0));
+  }, [selectedVehicleCategory, isFuelEfficiencyManuallyEdited]);
 
+  useEffect(() => {
+    setFuelPrice(String(selectedAdminFuelPrice || 0));
+  }, [selectedAdminFuelPrice]);
+
+  useEffect(() => {
+    if (!selectedVehicleCategory) return;
     if (selectedVehicleCategory.value === VehicleCategory.MOTORCYCLE && selectedFuelType === 'diesel') {
       const nonDiesel = fuelPriceOptions.find((row) => row.fuel_type !== 'diesel');
       if (nonDiesel) {
         setSelectedFuelType(nonDiesel.fuel_type);
       }
     }
-  }, [selectedVehicleCategory, selectedAdminFuelPrice, selectedFuelType, fuelPriceOptions]);
+  }, [selectedVehicleCategory, selectedFuelType, fuelPriceOptions]);
 
   const handleVehicleCategoryChange = (category: VehicleCategory) => {
+    setIsFuelEfficiencyManuallyEdited(false);
     setVehicle({
       ...vehicle,
       category
@@ -696,7 +705,10 @@ const PrivateVehicleScreen: React.FC = () => {
               <TextInput
                 label="Fuel Efficiency (km/L)"
                 value={vehicle.fuelEfficiency.toString()}
-                onChangeText={(text) => setVehicle({ ...vehicle, fuelEfficiency: parseFloat(text) || 0 })}
+                onChangeText={(text) => {
+                  setIsFuelEfficiencyManuallyEdited(true);
+                  setVehicle({ ...vehicle, fuelEfficiency: parseFloat(text) || 0 });
+                }}
                 keyboardType="numeric"
                 mode="outlined"
                 style={styles.input}
@@ -821,7 +833,10 @@ const PrivateVehicleScreen: React.FC = () => {
         <TextInput
           label="Fuel Efficiency (km/L)"
           value={vehicle.fuelEfficiency.toString()}
-          onChangeText={(text) => setVehicle({ ...vehicle, fuelEfficiency: parseFloat(text) || 0 })}
+          onChangeText={(text) => {
+            setIsFuelEfficiencyManuallyEdited(true);
+            setVehicle({ ...vehicle, fuelEfficiency: parseFloat(text) || 0 });
+          }}
           keyboardType="numeric"
           mode="outlined"
           style={styles.input}
