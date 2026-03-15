@@ -41,7 +41,8 @@ const RouteResultsScreen: React.FC = () => {
   const geometryCacheRef = useRef<Map<string, Route>>(new Map());
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(true);
 
-  // Keep visible ordering fuzzy-first so screen order matches backend-style scoring.
+  // Keep explicit user preference deterministic in list ordering.
+  // Fuzzy score is used as a tie-breaker, not as primary sort for strict modes.
   const sortRoutesByPreference = useCallback((items: Route[]) => {
     const sorted = [...items];
     sorted.sort((a, b) => {
@@ -52,20 +53,16 @@ const RouteResultsScreen: React.FC = () => {
       const fareDelta = a.totalFare - b.totalFare;
       const transferDelta = a.totalTransfers - b.totalTransfers;
 
-      if (fuzzyDelta !== 0) {
-        return fuzzyDelta;
-      }
-
       if (preference === 'shortest_time') {
-        return timeDelta || transferDelta || fareDelta;
+        return timeDelta || transferDelta || fareDelta || fuzzyDelta;
       }
 
       if (preference === 'lowest_fare') {
-        return fareDelta || timeDelta || transferDelta;
+        return fareDelta || timeDelta || transferDelta || fuzzyDelta;
       }
 
       if (preference === 'fewest_transfers') {
-        return transferDelta || timeDelta || fareDelta;
+        return transferDelta || timeDelta || fareDelta || fuzzyDelta;
       }
 
       return fuzzyDelta || timeDelta || fareDelta || transferDelta;

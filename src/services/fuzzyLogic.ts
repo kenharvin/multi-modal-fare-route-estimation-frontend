@@ -212,8 +212,26 @@ export const rankRoutes = (
     };
   });
 
-  // Sort by fuzzy score (descending)
-  return routesWithScores.sort((a, b) => (b.fuzzyScore || 0) - (a.fuzzyScore || 0));
+  // Keep explicit preferences deterministic: primary metric first, fuzzy as tie-breaker.
+  return routesWithScores.sort((a, b) => {
+    const fuzzyDelta = Number(b.fuzzyScore || 0) - Number(a.fuzzyScore || 0);
+    const timeDelta = Number(a.totalTime || 0) - Number(b.totalTime || 0);
+    const fareDelta = Number(a.totalFare || 0) - Number(b.totalFare || 0);
+    const transferDelta = Number(a.totalTransfers || 0) - Number(b.totalTransfers || 0);
+    const preferenceKey = String(preference || PublicTransportPreference.BALANCED).toLowerCase();
+
+    if (preferenceKey === 'shortest_time') {
+      return timeDelta || transferDelta || fareDelta || fuzzyDelta;
+    }
+    if (preferenceKey === 'lowest_fare') {
+      return fareDelta || timeDelta || transferDelta || fuzzyDelta;
+    }
+    if (preferenceKey === 'fewest_transfers') {
+      return transferDelta || timeDelta || fareDelta || fuzzyDelta;
+    }
+
+    return fuzzyDelta || timeDelta || fareDelta || transferDelta;
+  });
 };
 
 /**
