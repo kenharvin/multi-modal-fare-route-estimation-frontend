@@ -18,6 +18,7 @@ if (Platform.OS === 'web') {
 }
 
 export default function App() {
+  // App shell: injects global providers used by every screen.
   return (
     <SafeAreaProvider>
       <ThemeProvider>
@@ -28,6 +29,7 @@ export default function App() {
 }
 
 const ThemedApp: React.FC = () => {
+  // Theme-aware root that wires OTA update checks and navigation theming.
   const { isDark, colors } = useThemeMode();
 
   useEffect(() => {

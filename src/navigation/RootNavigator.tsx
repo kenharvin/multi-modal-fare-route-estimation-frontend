@@ -16,6 +16,7 @@ import ThemeToggle from '@components/ThemeToggle';
 const Stack = createStackNavigator<RootStackParamList>();
 
 const RootNavigator: React.FC = () => {
+  // Central screen registry and shared stack header styling.
   const { colors } = useThemeMode();
 
   return (

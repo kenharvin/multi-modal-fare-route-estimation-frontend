@@ -11,12 +11,17 @@ import MapViewComponent from '@components/MapViewComponent';
 import { Button } from 'react-native-paper';
 import LogoLoadingScreen from '@components/LogoLoadingScreen';
 import { fetchRoutes, fetchRouteGeometry, pingBackend } from '@services/api';
+import { rankRoutes } from '@services/fuzzyLogic';
 import { formatTimeRange } from '@/utils/helpers';
 import { useThemeMode } from '@context/ThemeContext';
 import { createRouteResultsScreenStyles } from '@/styles/screens/routeResultsScreen.styles';
 type RouteResultsRouteProp = RouteProp<RootStackParamList, 'RouteResults'>;
 type RouteResultsNavigationProp = StackNavigationProp<RootStackParamList, 'RouteResults'>;
 
+/**
+ * Displays ranked public-transport routes, route details cards, and map geometry preview.
+ * It coordinates fetching, ranking, selection state, and bottom-sheet interactions.
+ */
 const RouteResultsScreen: React.FC = () => {
   const { colors } = useThemeMode();
   const styles = useMemo(() => createRouteResultsScreenStyles(colors), [colors]);
@@ -36,12 +41,20 @@ const RouteResultsScreen: React.FC = () => {
   const geometryCacheRef = useRef<Map<string, Route>>(new Map());
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(true);
 
+  // Keep visible ordering fuzzy-first so screen order matches backend-style scoring.
   const sortRoutesByPreference = useCallback((items: Route[]) => {
     const sorted = [...items];
     sorted.sort((a, b) => {
+      const fuzzyA = Number(a.fuzzyScore || 0);
+      const fuzzyB = Number(b.fuzzyScore || 0);
+      const fuzzyDelta = fuzzyB - fuzzyA;
       const timeDelta = a.totalTime - b.totalTime;
       const fareDelta = a.totalFare - b.totalFare;
       const transferDelta = a.totalTransfers - b.totalTransfers;
+
+      if (fuzzyDelta !== 0) {
+        return fuzzyDelta;
+      }
 
       if (preference === 'shortest_time') {
         return timeDelta || transferDelta || fareDelta;
@@ -55,9 +68,6 @@ const RouteResultsScreen: React.FC = () => {
         return transferDelta || timeDelta || fareDelta;
       }
 
-      const fuzzyA = Number(a.fuzzyScore || 0);
-      const fuzzyB = Number(b.fuzzyScore || 0);
-      const fuzzyDelta = fuzzyB - fuzzyA;
       return fuzzyDelta || timeDelta || fareDelta || transferDelta;
     });
     return sorted;
@@ -74,6 +84,7 @@ const RouteResultsScreen: React.FC = () => {
     outputRange: [sheetCollapsedH, sheetExpandedH]
   });
 
+  // Expand the bottom sheet so the user can browse route cards.
   const expandSheet = useCallback(() => {
     if (isExpandedRef.current) return;
     isExpandedRef.current = true;
@@ -86,6 +97,7 @@ const RouteResultsScreen: React.FC = () => {
     }).start();
   }, [sheetProgress]);
 
+  // Collapse the sheet to prioritize map visibility.
   const collapseSheet = useCallback(() => {
     if (!isExpandedRef.current) return;
     isExpandedRef.current = false;
@@ -167,6 +179,7 @@ const RouteResultsScreen: React.FC = () => {
   );
 
   const selectedRoute = useMemo(() => {
+    // Prefer geometry-enriched version of selected route when available.
     if (!selectedRouteId) return null;
     const base = routes.find((r) => r.id === selectedRouteId);
     if (!base) return null;
@@ -174,6 +187,7 @@ const RouteResultsScreen: React.FC = () => {
   }, [routes, selectedRouteGeometry, selectedRouteId]);
 
   const constraintNotice = useMemo(() => {
+    // Read first backend-provided constraint warning from visible route list.
     for (const routeItem of routes) {
       if (routeItem.constraintNotice) return routeItem.constraintNotice;
     }
@@ -181,6 +195,7 @@ const RouteResultsScreen: React.FC = () => {
   }, [routes]);
 
   const constraintBanner = useMemo(() => {
+    // Translate backend constraint messages to user-friendly banner copy.
     if (!constraintNotice) return null;
     const normalized = String(constraintNotice || '').trim();
     const lower = normalized.toLowerCase();
@@ -213,11 +228,13 @@ const RouteResultsScreen: React.FC = () => {
   }, [constraintNotice]);
 
   const shouldHideMapWhilePreparingRoute = useMemo(() => {
+    // Prevent partial/old map render while geometry for the new selection is still loading.
     if (!selectedRouteId) return false;
     if (isGeometryLoading) return true;
     return !(selectedRouteGeometry && selectedRouteGeometry.id === selectedRouteId);
   }, [isGeometryLoading, selectedRouteGeometry, selectedRouteId]);
 
+  // Cache selected route geometry to avoid repeat backend geometry calls.
   const cacheRouteGeometry = useCallback((updatedRoute: Route) => {
     const cache = geometryCacheRef.current;
     cache.delete(updatedRoute.id);
@@ -231,6 +248,7 @@ const RouteResultsScreen: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // Clear local cache when leaving screen to avoid stale route geometry reuse.
     const geometryCache = geometryCacheRef.current;
     return () => {
       isMountedRef.current = false;
@@ -238,6 +256,7 @@ const RouteResultsScreen: React.FC = () => {
     };
   }, []);
 
+  // Fetch routes, sort by preference, and reset route-selection UI state.
   const loadRoutes = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -253,7 +272,9 @@ const RouteResultsScreen: React.FC = () => {
         preferredModes
       });
       if (!isMountedRef.current) return;
-      const sortedRoutes = sortRoutesByPreference(data);
+      // Recompute scores on client using backend-aligned formula for consistent UI ordering.
+      const reranked = rankRoutes(data, preference, preferredModes || []);
+      const sortedRoutes = sortRoutesByPreference(reranked);
       setRoutes(sortedRoutes);
       geometryCacheRef.current.clear();
       setSelectedRouteGeometry(null);
@@ -274,6 +295,7 @@ const RouteResultsScreen: React.FC = () => {
     void loadRoutes();
   }, [loadRoutes]);
 
+  // Select a route card and lazily fetch richer geometry for map rendering.
   const handleSelectRoute = useCallback(async (route: Route) => {
     setSelectedRouteId(route.id);
     try {
@@ -304,6 +326,7 @@ const RouteResultsScreen: React.FC = () => {
 
   const keyExtractor = useCallback((item: Route) => item.id, []);
 
+  // Reset selections and go back to route-input screen.
   const handleCalculateAnotherRoute = useCallback(() => {
     clearSelectedLocations();
     navigation.navigate('PublicTransport');

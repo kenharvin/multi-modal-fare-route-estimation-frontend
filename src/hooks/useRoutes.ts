@@ -11,6 +11,10 @@ interface UseRoutesResult {
   refetch: () => Promise<void>;
 }
 
+/**
+ * Route-loading hook used by screens that need public-transport options.
+ * It fetches backend routes, applies greedy filtering, then ranks results.
+ */
 export const useRoutes = (
   origin: Location | null,
   destination: Location | null,
@@ -21,6 +25,8 @@ export const useRoutes = (
   const [error, setError] = useState<string | null>(null);
 
   const fetchAndProcessRoutes = useCallback(async () => {
+    // Pipeline: fetch raw routes -> prune invalid options -> rank best candidates.
+    // This keeps route ranking deterministic before components consume the hook output.
     if (!origin || !destination) {
       return;
     }
@@ -40,7 +46,7 @@ export const useRoutes = (
       });
 
       // Rank routes using fuzzy logic
-      const rankedRoutes = rankRoutes(filteredRoutes);
+      const rankedRoutes = rankRoutes(filteredRoutes, preference);
 
       setRoutes(rankedRoutes);
     } catch (err) {
@@ -55,6 +61,7 @@ export const useRoutes = (
   }, [fetchAndProcessRoutes]);
 
   return {
+    // Expose stable API for screen-level consumption.
     routes,
     isLoading,
     error,
