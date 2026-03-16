@@ -1,6 +1,7 @@
 name: Android APK Build
 
 on:
+  push:
   workflow_dispatch:
 
 concurrency:
