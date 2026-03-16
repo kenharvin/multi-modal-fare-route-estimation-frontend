@@ -258,6 +258,44 @@ export const createPublicTransportScreenStyles = (colors: ThemeColors) =>
       flexWrap: 'wrap',
       gap: 8
     },
+    fareTypeLabel: {
+      marginTop: spacing.lg
+    },
+    fareTypeNote: {
+      fontSize: fontSize.xs,
+      color: colors.textSecondary,
+      marginBottom: spacing.sm
+    },
+    fareTypeRow: {
+      flexDirection: 'row',
+      gap: spacing.sm
+    },
+    fareTypeCard: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.gray5,
+      borderRadius: borderRadius.xl,
+      backgroundColor: colors.gray7,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md
+    },
+    fareTypeCardActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryLight
+    },
+    fareTypeCardLabel: {
+      fontSize: fontSize.md,
+      fontWeight: '600',
+      color: colors.textSecondary
+    },
+    fareTypeCardLabelActive: {
+      color: colors.textPrimary
+    },
+    fareTypeCardDescription: {
+      fontSize: fontSize.xs,
+      color: colors.textSecondary,
+      marginTop: spacing.xs
+    },
     modeChip: {
       borderWidth: 1,
       borderColor: colors.gray5,

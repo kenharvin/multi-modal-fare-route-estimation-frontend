@@ -21,6 +21,7 @@ const PublicTransportScreen: React.FC = () => {
   const navigation = useNavigation<PublicTransportNavigationProp>();
   const { selectedOrigin, selectedDestination, setSelectedOrigin, setSelectedDestination } = useLocation();
   const { setIsLoading } = useApp();
+  type FareType = 'regular' | 'discounted';
   const [preference, setPreference] = useState<PublicTransportPreference>(PublicTransportPreference.SHORTEST_TIME);
   const [showMap, setShowMap] = useState<boolean>(true);
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(false);
@@ -30,12 +31,26 @@ const PublicTransportScreen: React.FC = () => {
   const [budget, setBudget] = useState<string>('');
   const [maxTransfers, setMaxTransfers] = useState<string>('');
   const [preferredModes, setPreferredModes] = useState<string[]>(['jeepney','bus','lrt','mrt','pnr']);
+  const [fareType, setFareType] = useState<FareType>('regular');
+  const fareTypeOptions = useMemo(() => ([
+    {
+      value: 'regular' as FareType,
+      label: 'Regular Fare',
+      description: 'Standard fare rates for all passengers.'
+    },
+    {
+      value: 'discounted' as FareType,
+      label: 'Discounted Fare',
+      description: 'Senior, PWD, or student rates when available.'
+    }
+  ]), []);
 
   useFocusEffect(
     React.useCallback(() => {
       setPreference(PublicTransportPreference.SHORTEST_TIME);
       setBudget('');
       setMaxTransfers('');
+      setFareType('regular');
     }, [])
   );
 
@@ -153,7 +168,8 @@ const PublicTransportScreen: React.FC = () => {
       preference,
       budget: showBudgetInput ? (Number(budget) || undefined) : undefined,
       maxTransfers: showMaxTransfersInput ? (Number(maxTransfers) || undefined) : undefined,
-      preferredModes
+      preferredModes,
+      useDiscountedFare: fareType === 'discounted'
     });
   };
 
@@ -367,6 +383,24 @@ const PublicTransportScreen: React.FC = () => {
                 }}
               >
                 <Text style={[styles.modeChipText, active && styles.modeChipTextActive]}>{m.toUpperCase()}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={[styles.inputLabel, styles.fareTypeLabel]}>Fare Type</Text>
+        <Text style={styles.fareTypeNote}>Choose whether you are eligible for discounted price or not.</Text>
+        <View style={styles.fareTypeRow}>
+          {fareTypeOptions.map((option) => {
+            const active = fareType === option.value;
+            return (
+              <TouchableOpacity
+                key={option.value}
+                style={[styles.fareTypeCard, active && styles.fareTypeCardActive]}
+                onPress={() => setFareType(option.value)}
+              >
+                <Text style={[styles.fareTypeCardLabel, active && styles.fareTypeCardLabelActive]}>{option.label}</Text>
+                <Text style={styles.fareTypeCardDescription}>{option.description}</Text>
               </TouchableOpacity>
             );
           })}

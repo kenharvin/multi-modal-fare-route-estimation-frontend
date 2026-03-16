@@ -11,6 +11,7 @@ import MapViewComponent from '@components/MapViewComponent';
 import { Button } from 'react-native-paper';
 import LogoLoadingScreen from '@components/LogoLoadingScreen';
 import { fetchRoutes, fetchRouteGeometry, pingBackend } from '@services/api';
+import { formatAxiosError } from '@services/apiClient';
 import { rankRoutes } from '@services/fuzzyLogic';
 import { formatTimeRange } from '@/utils/helpers';
 import { useThemeMode } from '@context/ThemeContext';
@@ -28,7 +29,7 @@ const RouteResultsScreen: React.FC = () => {
 
   const navigation = useNavigation<RouteResultsNavigationProp>();
   const route = useRoute<RouteResultsRouteProp>();
-  const { origin, destination, preference, budget, maxTransfers, preferredModes } = route.params;
+  const { origin, destination, preference, budget, maxTransfers, preferredModes, useDiscountedFare } = route.params;
   const { isLoading, setIsLoading } = useApp();
   const { clearSelectedLocations } = useLocation();
   
@@ -37,9 +38,11 @@ const RouteResultsScreen: React.FC = () => {
   const [selectedRouteGeometry, setSelectedRouteGeometry] = useState<Route | null>(null);
   const hasFetchedRef = useRef<boolean>(false);
   const isMountedRef = useRef<boolean>(true);
+  const lastLoadErrorRef = useRef<string | null>(null);
   const [isGeometryLoading, setIsGeometryLoading] = useState<boolean>(false);
   const geometryCacheRef = useRef<Map<string, Route>>(new Map());
   const [sheetExpanded, setSheetExpanded] = useState<boolean>(true);
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
 
   // Keep explicit user preference deterministic in list ordering.
   // Fuzzy score is used as a tie-breaker, not as primary sort for strict modes.
@@ -253,20 +256,39 @@ const RouteResultsScreen: React.FC = () => {
     };
   }, []);
 
+  const showRouteLoadError = useCallback((message: string) => {
+    setLoadErrorMessage(message);
+    if (lastLoadErrorRef.current === message) {
+      return;
+    }
+
+    lastLoadErrorRef.current = message;
+    const lower = message.toLowerCase();
+    const title = lower.includes('internet connection') || lower.includes('unable to connect')
+      ? 'No Internet Connection'
+      : 'Route Request Failed';
+
+    Alert.alert(title, message);
+  }, []);
+
   // Fetch routes, sort by preference, and reset route-selection UI state.
   const loadRoutes = useCallback(async () => {
     try {
       setIsLoading(true);
+      setLoadErrorMessage(null);
+      lastLoadErrorRef.current = null;
       const ok = await pingBackend();
       if (!ok) {
         if (!isMountedRef.current) return;
+        showRouteLoadError('Unable to connect to the server. Check your internet connection and try again.');
         setRoutes([]);
         return;
       }
       const data = await fetchRoutes(origin, destination, preference, {
         budget,
         maxTransfers,
-        preferredModes
+        preferredModes,
+        useDiscountedFare
       });
       if (!isMountedRef.current) return;
       // Recompute scores on client using backend-aligned formula for consistent UI ordering.
@@ -276,15 +298,16 @@ const RouteResultsScreen: React.FC = () => {
       geometryCacheRef.current.clear();
       setSelectedRouteGeometry(null);
       setSelectedRouteId(null);
-    } catch {
+    } catch (error) {
       if (!isMountedRef.current) return;
+      showRouteLoadError(formatAxiosError(error));
       setRoutes([]);
     } finally {
       if (isMountedRef.current) {
         setIsLoading(false);
       }
     }
-  }, [budget, destination, maxTransfers, origin, preference, preferredModes, setIsLoading, sortRoutesByPreference]);
+  }, [budget, destination, maxTransfers, origin, preference, preferredModes, setIsLoading, showRouteLoadError, sortRoutesByPreference, useDiscountedFare]);
 
   useEffect(() => {
     if (hasFetchedRef.current) return;
@@ -358,7 +381,7 @@ const RouteResultsScreen: React.FC = () => {
         <View style={styles.emptyContent}>
           <Text style={styles.emptyTitle}>No Routes Found</Text>
           <Text style={styles.emptyText}>
-            We couldn't find any routes for your selected preference and locations.
+            {loadErrorMessage || "We couldn't find any routes for your selected preference and locations."}
           </Text>
           <Button
             mode="contained"

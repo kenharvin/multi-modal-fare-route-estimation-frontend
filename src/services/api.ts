@@ -117,7 +117,7 @@ export const fetchRoutes = async (
   origin: Location,
   destination: Location,
   preference: PublicTransportPreference,
-  options?: { budget?: number; maxTransfers?: number; preferredModes?: string[]; compact?: boolean; gtfsOverlay?: boolean }
+  options?: { budget?: number; maxTransfers?: number; preferredModes?: string[]; compact?: boolean; gtfsOverlay?: boolean; useDiscountedFare?: boolean }
 ): Promise<Route[]> => {
   const maxAttempts = 2;
   let lastError: any = null;
@@ -145,6 +145,9 @@ export const fetchRoutes = async (
       ...(Number.isFinite(budgetValue) ? { estimated_budget: budgetValue } : {}),
       ...(Number.isFinite(maxTransfersValue) ? { max_transfers: maxTransfersValue } : {})
     };
+    if (options?.useDiscountedFare) {
+      preferencesPayload.use_discounted_fares = true;
+    }
     const response = await apiClient.post(`/public-transport/plan?compact=${useCompact ? 1 : 0}&gtfs_overlay=${useGtfsOverlay ? 1 : 0}`, {
       origin: {
         lat: origin.coordinates.latitude,

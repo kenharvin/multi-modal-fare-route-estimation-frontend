@@ -12,6 +12,7 @@ export type RootStackParamList = {
     budget?: number;
     maxTransfers?: number;
     preferredModes?: string[];
+    useDiscountedFare?: boolean;
   };
   TripPlan: {
     initialRoute: any; // Route type
